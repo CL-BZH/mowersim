@@ -123,18 +123,38 @@ class Connection:
 
 def connect(start: Pose, goal: Pose, mower: Mower, checker: Checker | None,
             mow: bool = True, mow_reverse: bool = False, reverse: bool = True,
-            max_words: int = 48) -> Connection | None:
+            max_words: int = 48, smooth: bool = False, smooth_words: int = 8) -> Connection | None:
     """Fastest Reeds-Shepp candidate word from start to goal whose footprint stays on
     the lawn (None if every candidate collides). Blades follow ``mow`` forward and
-    ``mow_reverse`` in reverse."""
+    ``mow_reverse`` in reverse. With ``smooth``, the ``smooth_words`` fastest words
+    are given curvature ramps (straight at both ends, course chapter 10) and the
+    fastest smoothed path that reaches the goal and stays on the lawn is kept."""
     best = None
+    words = []
     for w in candidates(start, goal, mower.min_radius, reverse)[:max_words]:
         segs = [Segment(s.curvature, s.length, s.reverse,
                         mow=(mow_reverse if s.reverse else mow))
                 for s in w.segments(mower.min_radius)]
-        t = path_time(segs, mower.v_mow, mower.v_turn, mower.v_reverse, mower.t_shift)
+        words.append((path_time(segs, mower.v_mow, mower.v_turn, mower.v_reverse,
+                                mower.t_shift), segs))
+    words.sort(key=lambda x: x[0])
+    if smooth:
+        from ..smooth import smooth_run
+        for t0, segs in words[:smooth_words]:
+            if best is not None and t0 >= best.time:
+                break                      # ramps only add time
+            res = smooth_run(start, segs, goal, mower)
+            if not res.ok:
+                continue
+            t = path_time(res.segments, mower.v_mow, mower.v_turn, mower.v_reverse,
+                          mower.t_shift)
+            if (best is None or t < best.time) and (checker is None
+                                                    or checker.free(start, res.segments)):
+                best = Connection(res.segments, t)
+        return best
+    for t, segs in words:
         if best is not None and t >= best.time:
-            continue
+            break
         if checker is None or checker.free(start, segs):
             best = Connection(segs, t)
     return best

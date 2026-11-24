@@ -119,12 +119,20 @@ def cmd_plan(a):
     from .planning.planner import plan, time_breakdown
     from .viz import animate, plot_result
     lawn, m = Lawn.from_file(a.lawn), _mower(a)
-    traj, info = plan(lawn, m, pattern=a.pattern, order=a.order)
+    traj, info = plan(lawn, m, pattern=a.pattern, order=a.order, smooth=a.smooth,
+                      directions=a.directions)
+    breakdown = {k: round(v, 1) for k, v in time_breakdown(traj, m).items()}
+    if a.follow is not None:
+        from .follow import Follower, follow
+        run = follow(traj, m, Follower(noise_pos=a.follow, noise_heading_deg=a.follow_heading))
+        print(f"followed with {a.follow} m and {a.follow_heading} deg of noise: largest "
+              f"distance to the plan {run.errors.max():.3f} m")
+        traj = run.trajectory
     res = evaluate(lawn, m, traj, res=a.res)
     dirs = ", ".join(f"{math.degrees(c.theta):.0f}" for c in info["cells"])
     print(f"order of the passes: {info['pattern']}; {info['headland_passes']} headland passes; "
           f"{len(info['cells'])} cells (directions {dirs} deg); {info['passes']} passes")
-    print("time (s):", {k: round(v, 1) for k, v in time_breakdown(traj, m).items()})
+    print("time of the plan (s):", breakdown)
     print(json.dumps(res.as_dict(), indent=1))
     if a.save:
         traj.save(a.save)
@@ -174,6 +182,15 @@ def main(argv=None):
                    help="order of the passes (course, chapter 7); best tries both")
     s.add_argument("--order", choices=("optimal", "greedy"), default="optimal",
                    help="order of the cells (course, chapter 9)")
+    s.add_argument("--smooth", action="store_true",
+                   help="curvature ramps for a steering of limited speed (course, chapter 10)")
+    s.add_argument("--directions", choices=("estimate", "search"), default="estimate",
+                   help="direction of each cell: estimated, or planned in every candidate "
+                        "(course, chapter 12)")
+    s.add_argument("--follow", type=float, metavar="SIGMA",
+                   help="simulate driving the plan with this position noise in m (chapter 11)")
+    s.add_argument("--follow-heading", type=float, default=1.0, metavar="DEG",
+                   help="heading noise for --follow (default 1 degree)")
     s.add_argument("--res", type=float, default=0.05)
     s.add_argument("--save", help="save the trajectory (JSON)")
     s.add_argument("--png")

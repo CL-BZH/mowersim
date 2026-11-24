@@ -160,6 +160,7 @@ class Ring:
     offset: float
     corners: int
     failed: int                # corners with no collision-free path: the ring is cut there
+    trimmed: float = 0.0       # length cut off the open pieces to keep them on the lawn
 
     @property
     def closed(self) -> bool:
@@ -322,16 +323,20 @@ def build_ring(coords: np.ndarray, offset: float, mower: Mower, checker: Checker
     else:
         # open pieces from just after one break to just before the next
         pieces = []
+        trimmed = 0.0
         for k, b0 in enumerate(breaks):
             b1 = breaks[(k + 1) % len(breaks)]
             steps = (b1 - b0) % n or n
             start = Pose(*(pts[b0] + vs[b0].t_out * unit(heading[b0])), heading[b0])
             segs = walk(pts, vs, heading, length, b0, vs[b0].t_out, steps)
-            start, segs = trim_piece(start, [sg for sg in segs if sg.length > 1e-9], checker)
+            segs = [sg for sg in segs if sg.length > 1e-9]
+            before = sum(sg.length for sg in segs)
+            start, segs = trim_piece(start, segs, checker)
+            trimmed += before - sum(sg.length for sg in segs)
             if segs:
                 pieces.append((start, segs))
     corners = sum(v.kind in ("corner", "break") for v in vs)
-    return Ring(pieces, offset, corners, failed)
+    return Ring(pieces, offset, corners, failed, trimmed if breaks else 0.0)
 
 
 def cut_segments(start: Pose, segs: list[Segment], s_a: float, s_b: float):
@@ -441,26 +446,29 @@ def rings_at(lawn: Lawn, offset: float, mower: Mower, checker: Checker, need: fl
 def plan_headland(lawn: Lawn, mower: Mower, passes: int = 2, overlap: float = 0.05,
                   margin: float = 0.05, mow_reverse: bool = False,
                   checker: Checker | None = None, max_slack: float = 0.5,
-                  break_cost: float = 4.0) -> Headland:
+                  break_cost: float = 4.0, min_slack: float = 0.0) -> Headland:
     """Headland rings. The first ring keeps the clearance h + margin + e from the
     border. The extra slack e (by steps of 5 cm) is the one that minimises
-    e P + break_cost F, where P is the length of the border and F the number of
-    corners left without a collision-free path (each one cuts its ring) plus
+    e P + break_cost F + s T, where P is the length of the border, F the number
+    of corners left without a collision-free path (each one cuts its ring) plus
     the number of pieces that still collide (the outline grazes the margin when
-    e = 0): the
+    e = 0), and T the length trimmed off the open pieces to keep them on the
+    lawn (a band of width s left uncut): the
     slack leaves a strip of area about e P uncut, a break a patch of about
-    ``break_cost`` square metres."""
+    ``break_cost`` square metres. ``min_slack`` leaves room for the ramps of
+    chapter 10, which push the curved parts of a ring slightly outwards."""
     checker = checker or Checker(lawn, mower, margin=margin)
     s = mower.cutting_width - overlap
     base = lateral_half_width(mower) + margin
     border = lawn_polygon(lawn).boundary.length
     best = None
-    for slack in np.arange(0.0, max_slack + 1e-9, 0.05):
+    for slack in np.arange(min_slack, max_slack + 1e-9, 0.05):
         rings = rings_at(lawn, base + float(slack), mower, checker, base + float(slack),
                          mow_reverse)
         failed = sum(r.failed + sum(not checker.free(*pc) for pc in r.pieces)
                      for r in rings) if rings else 10 ** 6
-        score = (slack * border + break_cost * failed, failed)
+        trimmed = sum(r.trimmed for r in rings)
+        score = (slack * border + break_cost * failed + s * trimmed, failed)
         if best is None or score < best[0]:
             best = (score, base + float(slack), rings)
         if failed == 0:

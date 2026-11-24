@@ -34,6 +34,18 @@
   $\ell_{\mathrm{mow}}$ & distance driven with the blades engaged &
     Theorem~\ref{thm:lowerbound} \\
   $\eta$ & efficiency & Definition~\ref{def:efficiency} \\
+  $c_k$, $s$, $o$ & clearance of headland pass $k$, spacing, overlap &
+    Chapter~\ref{ch:headlands} \\
+  $a_{\mathrm{turn}}$ & reach of a turn beyond the rear axle &
+    Section~\ref{sec:shift} \\
+  $T(j)$ & time of a turn over $j$ passes & Definition~\ref{def:passorder}
+    \\
+  $W(\theta)$ & width of a region across $\theta$ &
+    Theorem~\ref{thm:minwidth} \\
+  $\omega$, $\sigma$ & steering rate, largest rate of change of $\kappa$ &
+    Proposition~\ref{prop:sharpness} \\
+  $e_y$, $e_\theta$, $\ell$ & lateral and heading errors, settling distance
+    & Proposition~\ref{prop:feedback} \\
   \bottomrule
 \end{tabular}
 \end{center}
@@ -49,6 +61,8 @@ python -m mowersim mower                      # the mower, top view
 python -m mowersim show lawns/garden.json     # a lawn and the mower
 python -m mowersim path 0 0.92 180 --compare  # Dubins vs Reeds-Shepp
 python -m mowersim demo lawns/rectangle.json --png demo.png
+python -m mowersim plan lawns/garden.json --png plan.png   # the planner
+python -m mowersim plan lawns/garden.json --smooth --follow 0.02
 python -m pytest                              # the tests
 python tools/course_figures.py                # redraw the figures
 \end{verbatim}
@@ -70,6 +84,11 @@ accepts \code{-{}-mower my\_mower.json}. To use another machine, measure:
     \leavevmode\\
     Forward on straight lines and in turns, in reverse, and the time to stop,
     change gear and start again.
+  \item[The steering rate.]
+    \leavevmode\\
+    The time the steering takes from straight to full lock, while driving:
+    \code{max\_steer\_rate\_deg} is the maximum steering angle divided by
+    that time.
 \end{description}
 
 \section{Building this document}

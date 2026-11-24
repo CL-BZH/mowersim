@@ -16,6 +16,7 @@ Two orders (course, chapter 7):
 """
 from __future__ import annotations
 
+import functools
 import math
 from dataclasses import dataclass
 
@@ -76,23 +77,36 @@ def swaths(region, theta: float, mower: Mower, overlap: float = 0.05,
     return out
 
 
-def turn_time(mower: Mower, jump: float, reverse: bool = True) -> float:
-    """Time of the fastest turn from the end of a pass to a pass ``jump`` to the
-    side driven the other way (its rear axle 2 d further out, see turn_ahead)."""
-    from ..paths import fastest
+def fastest_turn(mower: Mower, jump: float, reverse: bool = True,
+                 smooth: bool = False) -> list[Segment]:
+    """Fastest turn from the end of a pass to a pass ``jump`` to the side driven
+    the other way (its rear axle 2 d further out, see turn_ahead); with
+    ``smooth``, with curvature ramps (course, chapter 10)."""
+    return list(_fastest_turn(mower, round(jump, 6), reverse, smooth))
+
+
+@functools.lru_cache(maxsize=4096)
+def _fastest_turn(mower: Mower, jump: float, reverse: bool, smooth: bool) -> tuple:
     a, b = Pose(0.0, 0.0, 0.0), Pose(2 * mower.deck_offset, jump, math.pi)
-    p = fastest(a, b, mower, reverse=reverse)
+    if smooth:
+        conn = connect(a, b, mower, None, reverse=reverse, smooth=True, smooth_words=16)
+        if conn is not None:
+            return tuple(conn.segments)
+    from ..paths import fastest
+    return tuple(fastest(a, b, mower, reverse=reverse))
+
+
+def turn_time(mower: Mower, jump: float, reverse: bool = True, smooth: bool = False) -> float:
+    """Time of the fastest turn over ``jump`` (see fastest_turn)."""
+    p = fastest_turn(mower, jump, reverse, smooth)
     return path_time(p, mower.v_mow, mower.v_turn, mower.v_reverse, mower.t_shift)
 
 
-def min_forward_jump(mower: Mower, spacing: float) -> int:
+def min_forward_jump(mower: Mower, spacing: float, smooth: bool = False) -> int:
     """Smallest number of passes j such that the fastest turn over j passes is
     driven forward only."""
-    from ..paths import fastest
     j = 1
-    while any(sg.reverse for sg in fastest(Pose(0.0, 0.0, 0.0),
-                                           Pose(2 * mower.deck_offset, j * spacing, math.pi),
-                                           mower)):
+    while any(sg.reverse for sg in fastest_turn(mower, j * spacing, smooth=smooth)):
         j += 1
     return j
 
@@ -141,13 +155,13 @@ def improve_order(order: list[int], cost: dict[int, float]) -> list[int]:
 
 
 def pass_order(n: int, pattern: str, mower: Mower | None = None,
-               spacing: float = 0.92) -> list[int]:
+               spacing: float = 0.92, smooth: bool = False) -> list[int]:
     """``adjacent``: 0, 1, 2, ...; ``skip``: the order of least total turn time,
     each turn timed by turn_time for its jump (local search from the adjacent
     order and from interleaved blocks)."""
     if pattern == "adjacent" or n <= 2:
         return list(range(n))
-    cost = {j: turn_time(mower, j * spacing) for j in range(1, n)}
+    cost = {j: turn_time(mower, j * spacing, smooth=smooth) for j in range(1, n)}
     starts = [list(range(n))] + [interleave(n, k) for k in range(2, 8)]
     return min((improve_order(o, cost) for o in starts), key=lambda o: order_cost(o, cost))
 
@@ -206,7 +220,7 @@ def _pass_poses(x: Swath, theta: float, forward: bool, d: float):
 
 def join(end: Pose, last_len: float, p_start, h: float, length: float, mower: Mower,
          checker: Checker, mow_reverse: bool = False, max_backoff: float = 3.0,
-         step: float = 0.25):
+         step: float = 0.25, smooth: bool = False):
     """Fastest collision-free turn from the end of a pass to the start of the next.
     If none exists, the previous pass is stopped ``cp`` early and the next one
     started ``cn`` late, trying the pairs (cp, cn) by increasing cp + cn.
@@ -219,7 +233,7 @@ def join(end: Pose, last_len: float, p_start, h: float, length: float, mower: Mo
     for cp, cn in pairs:
         s0 = Pose(end.x - cp * u[0], end.y - cp * u[1], end.theta)
         g = Pose(*(p_start + cn * e), h)
-        conn = connect(s0, g, mower, checker, mow=True, mow_reverse=mow_reverse)
+        conn = connect(s0, g, mower, checker, mow=True, mow_reverse=mow_reverse, smooth=smooth)
         if conn is not None:
             return conn, float(cp), float(cn)
     return None
@@ -228,7 +242,7 @@ def join(end: Pose, last_len: float, p_start, h: float, length: float, mower: Mo
 def plan_passes(region, theta: float, mower: Mower, checker: Checker, start: Pose,
                 pattern: str = "adjacent", overlap: float = 0.05, mow_reverse: bool = False,
                 max_backoff: float = 3.0, step: float = 0.25,
-                variant: tuple[bool, bool] | None = None) -> PassPlan:
+                variant: tuple[bool, bool] | None = None, smooth: bool = False) -> PassPlan:
     """Mow the swaths of ``region`` in the given order, starting from ``start``.
     The order may be run backwards and the first pass driven either way: the
     variant (backwards, first pass forward) with the fastest transfer from
@@ -236,7 +250,7 @@ def plan_passes(region, theta: float, mower: Mower, checker: Checker, start: Pos
     from .search import hybrid_astar
     s = mower.cutting_width - overlap
     sw = swaths(region, theta, mower, overlap)
-    base = pass_order(len(sw), pattern, mower, s)
+    base = pass_order(len(sw), pattern, mower, s, smooth)
     d = mower.deck_offset
     variants = [variant] if variant is not None else [
         (rev, ff) for rev in (False, True) for ff in (True, False)]
@@ -244,7 +258,7 @@ def plan_passes(region, theta: float, mower: Mower, checker: Checker, start: Pos
     for rev, first_forward in variants:
         order = base[::-1] if rev else base
         p0, _, h0, _, _ = _pass_poses(sw[order[0]], theta, first_forward, d)
-        conn = connect(start, Pose(*p0, h0), mower, checker, mow=False)
+        conn = connect(start, Pose(*p0, h0), mower, checker, mow=False, smooth=smooth)
         if conn is not None and (best is None or conn.time < best[0].time):
             best = (conn, order, first_forward)
     if best is None:                       # no direct path: search
@@ -263,7 +277,7 @@ def plan_passes(region, theta: float, mower: Mower, checker: Checker, start: Pos
         cn = 0.0
         if prev is not None:
             res = join(prev[0], prev[1], p_start, h, length, mower, checker, mow_reverse,
-                       max_backoff, step)
+                       max_backoff, step, smooth)
             if res is None:                # around an obstacle
                 path = hybrid_astar(prev[0], Pose(*p_start, h), mower, checker)
                 if path is None:
@@ -311,16 +325,14 @@ def plan_simple(lawn: Lawn, mower: Mower, pattern: str = "adjacent", theta: floa
     return traj, info
 
 
-def turn_ahead(mower: Mower, jump: float, reverse: bool = True) -> float:
+def turn_ahead(mower: Mower, jump: float, reverse: bool = True, smooth: bool = False) -> float:
     """How far the mower's outline goes beyond the rear axle at the end of a pass
     in the fastest turn to the pass ``jump`` to the side, driven the other way.
     The next pass starts with the deck at the same line as the end of this one,
     so its rear axle is 2 d further out (course, chapter 7)."""
-    from ..paths import fastest
     from .common import footprint_samples
-    d = mower.deck_offset
-    a, b = Pose(0.0, 0.0, 0.0), Pose(2 * d, jump, math.pi)
-    smp = Trajectory(a).extend(fastest(a, b, mower, reverse=reverse)).sample(0.02)
+    a = Pose(0.0, 0.0, 0.0)
+    smp = Trajectory(a).extend(fastest_turn(mower, jump, reverse, smooth)).sample(0.02)
     pts = footprint_samples(mower, 0.05)
     return max(float((x + math.cos(t) * pts[:, 0] - math.sin(t) * pts[:, 1]).max())
                for x, t in zip(smp.x, smp.theta))

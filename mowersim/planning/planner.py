@@ -37,12 +37,13 @@ class Way:
     exit: Pose                       # rear axle at the end of the last pass
 
 
-def cell_ways(cell: Cell, mower: Mower, pattern: str, overlap: float) -> list[Way]:
+def cell_ways(cell: Cell, mower: Mower, pattern: str, overlap: float,
+              smooth: bool = False) -> list[Way]:
     s = mower.cutting_width - overlap
     sw = swaths(cell.polygon, cell.theta, mower, overlap)
     if not sw:
         return []
-    base = pass_order(len(sw), pattern, mower, s)
+    base = pass_order(len(sw), pattern, mower, s, smooth)
     d = mower.deck_offset
     out = []
     for rev, ff in VARIANTS:
@@ -140,14 +141,19 @@ def greedy_order(start: Pose, ways: list[list[Way]], cost) -> tuple[list[tuple[i
 
 
 def plan(lawn: Lawn, mower: Mower, pattern: str = "best", order: str = "optimal",
-         overlap: float = 0.05, margin: float = 0.05, headland_passes: int | None = None):
+         overlap: float = 0.05, margin: float = 0.05, headland_passes: int | None = None,
+         smooth: bool = False, directions: str = "estimate", model=None):
     """Complete plan: headland, cells, cells in the best order. ``pattern`` is
     ``adjacent``, ``skip`` or ``best`` (both, keep the faster plan); ``order`` is
-    ``optimal`` (dynamic programming) or ``greedy``. Returns (trajectory, info)."""
+    ``optimal`` (dynamic programming) or ``greedy``. With ``smooth``, the turns
+    and the order of the passes are planned with curvature ramps, and the whole
+    path is then smoothed (course, chapter 10). ``directions`` chooses the
+    direction of each cell by the ``estimate``, a learned ``model`` or by
+    ``search`` (planning each candidate, chapter 12). Returns (trajectory, info)."""
     if pattern == "best":
         from ..coverage import evaluate
-        plans = [plan(lawn, mower, p, order, overlap, margin, headland_passes)
-                 for p in ("adjacent", "skip")]
+        plans = [plan(lawn, mower, p, order, overlap, margin, headland_passes, smooth,
+                      directions, model) for p in ("adjacent", "skip")]
         timed = [(evaluate(lawn, mower, t).time, t, info) for t, info in plans]
         _, traj, info = min(timed, key=lambda x: x[0])
         info["compared"] = {p: round(t / 60, 2) for p, (t, _, _) in zip(("adjacent", "skip"),
@@ -157,15 +163,20 @@ def plan(lawn: Lawn, mower: Mower, pattern: str = "best", order: str = "optimal"
     checker = Checker(lawn, mower, margin=margin)
     s = mower.cutting_width - overlap
     if headland_passes is None:
-        j = 1 if pattern == "adjacent" else min_forward_jump(mower, s)
-        ahead = max(turn_ahead(mower, j * s), turn_ahead(mower, (j + 1) * s))
+        j = 1 if pattern == "adjacent" else min_forward_jump(mower, s, smooth)
+        ahead = max(turn_ahead(mower, j * s, smooth=smooth),
+                    turn_ahead(mower, (j + 1) * s, smooth=smooth))
         headland_passes = headland_passes_needed(mower, ahead, 0.515 + margin + 0.05, s, margin)
     hl = plan_headland(lawn, mower, passes=headland_passes, overlap=overlap, margin=margin,
                        checker=checker)
     traj = link_rings(hl.rings, mower, checker)
     cells = [c for c in best_decomposition(hl.interior, mower, overlap, pattern)
              if swaths(c.polygon, c.theta, mower, overlap)]
-    ways = [cell_ways(c, mower, pattern, overlap) for c in cells]
+    if directions != "estimate":
+        from .learn import choose_direction
+        for c in cells:
+            c.theta = choose_direction(c.polygon, mower, directions, model, checker)
+    ways = [cell_ways(c, mower, pattern, overlap, smooth) for c in cells]
     cost = TransferCost(mower, checker)
     solve = order_cells if order == "optimal" else greedy_order
     seq, estimate = solve(traj.end, ways, cost)
@@ -173,11 +184,15 @@ def plan(lawn: Lawn, mower: Mower, pattern: str = "best", order: str = "optimal"
     for i, a in seq:
         c = cells[i]
         pp = plan_passes(c.polygon, c.theta, mower, checker, traj.end, pattern, overlap,
-                         variant=ways[i][a].variant)
+                         variant=ways[i][a].variant, smooth=smooth)
         traj.extend(pp.trajectory.segments)
         plans.append((c, pp))
+    stats = None
+    if smooth:
+        from ..smooth import smooth as smooth_path
+        traj, stats = smooth_path(traj, mower, checker)
     info = dict(pattern=pattern, headland_passes=headland_passes, cells=cells, headland=hl,
-                plans=plans, sequence=seq, transfer_estimate=estimate,
+                plans=plans, sequence=seq, transfer_estimate=estimate, smooth_stats=stats,
                 failures=sum(pp.turn_failures for _, pp in plans),
                 passes=sum(pp.passes for _, pp in plans))
     return traj, info

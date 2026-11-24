@@ -381,3 +381,72 @@ def test_time_breakdown_adds_up():
     assert sum(b.values()) == pytest.approx(path_time(segs, M.v_mow, M.v_turn, M.v_reverse,
                                                       M.t_shift))
     assert b["stops"] == pytest.approx(2 * M.t_shift)
+
+
+# ------------------------------------------------------------ smooth steering
+def test_ramp_matches_the_clothoid():
+    from mowersim.smooth import end_pose, ramp, sharpness
+    sig, k = sharpness(M), M.max_curvature
+    length = k / sig
+    s = np.linspace(0, length, 100001)
+    th = sig * s ** 2 / 2
+    x, y = np.trapezoid(np.cos(th), s), np.trapezoid(np.sin(th), s)
+    p = end_pose(Pose(0, 0, 0), ramp(0.0, k, sig, False, True))
+    assert math.hypot(p.x - x, p.y - y) < 1e-3
+    assert p.theta == pytest.approx(k * length / 2)
+
+
+def test_smoothed_turns_reach_the_next_pass_with_ramps():
+    from mowersim.kinematics import Segment
+    from mowersim.smooth import curvature_jumps, end_pose, smooth_run
+    d = M.deck_offset
+    for jump in (0.92, 3.68):
+        a, b = Pose(0, 0, 0), Pose(2 * d, jump, math.pi)
+        raw = fastest(a, b, M, mow=True)
+        line = [Segment(0.0, 1.0)]                     # the passes before and after
+        assert curvature_jumps(line + raw + line, M) > 0
+        res = smooth_run(a, raw, b, M)
+        assert res.ok and curvature_jumps(line + res.segments + line, M) == 0
+        e = end_pose(a, res.segments)
+        assert (e.x, e.y) == pytest.approx((b.x, b.y), abs=1e-4)
+        assert res.segments[0].curvature == pytest.approx(0, abs=0.1)   # starts straight
+
+
+# --------------------------------------------------------- following the path
+def test_feedback_converges_without_overshoot():
+    from mowersim.follow import Follower, follow
+    from mowersim.kinematics import Segment
+    ref = Trajectory(Pose(0, 0, 0), [Segment(0.0, 12.0)])
+    run = follow(ref, M, Follower(settle=1.0), start=Pose(0.0, -0.3, 0.0))
+    e = run.errors
+    assert e[0] == pytest.approx(0.3, abs=0.01)
+    assert e[-1] < 0.02                              # converged
+    assert run.trajectory.end.y < 0.01               # never crossed far to the other side
+
+
+def test_feedback_follows_a_smoothed_turn_closely():
+    from mowersim.follow import Follower, follow
+    from mowersim.kinematics import Segment
+    from mowersim.planning.swaths import fastest_turn
+    segs = [Segment(0.0, 4.0)] + fastest_turn(M, 3.68, smooth=True) + [Segment(0.0, 4.0)]
+    run = follow(Trajectory(Pose(0, 0, 0), segs), M, Follower())
+    assert run.errors.max() < 0.03
+
+
+# ---------------------------------------------------------- search, learning
+def test_linear_fit_recovers_a_linear_law():
+    from mowersim.planning.learn import fit
+    rng = np.random.default_rng(0)
+    x = rng.uniform(0, 10, (200, 3))
+    y = 2.0 + x @ np.array([1.5, -0.5, 3.0])
+    model = fit(x, y, ridge=1e-9)
+    assert model.predict(x[:5]) == pytest.approx(y[:5], rel=1e-4)
+
+
+def test_cell_time_is_close_to_the_estimate_on_a_rectangle():
+    from shapely.geometry import box
+    from mowersim.planning.learn import cell_time, features
+    cell = box(0, 0, 16, 8)
+    t = cell_time(cell, 0.0, M)
+    est = features(cell, 0.0, M)[0]
+    assert t == pytest.approx(est, rel=0.05)

@@ -678,6 +678,7 @@ def _final(name):
         lawn = example_lawns()[name]
         traj, info = plan(lawn, M)
         _FINAL[name] = (lawn, traj, info, evaluate(lawn, M, traj))
+        print(name, info["pattern"], info.get("compared"), _FINAL[name][3].as_dict(), flush=True)
     return _FINAL[name]
 
 
@@ -702,6 +703,7 @@ def fig_final():
         for ax in axes[row]:
             ax.tick_params(labelsize=7)
     fig.tight_layout(h_pad=1.5)
+    fig.savefig(OUT / "final.png", dpi=80)          # for the README
     save(fig, "final.pdf")
 
 
@@ -738,6 +740,245 @@ def fig_breakdown():
     save(fig, "breakdown.pdf")
 
 
+# ---------------------------------------------------------------- chapter 10
+
+def _profile(segs):
+    """Distance along the path and curvature, as steps (for plotting)."""
+    s, k = [0.0], [segs[0].curvature]
+    for sg in segs:
+        s += [s[-1], s[-1] + sg.length]
+        k += [sg.curvature, sg.curvature]
+    return np.array(s[1:]), np.array(k[1:])
+
+
+def fig_clothoid():
+    from mowersim.planning.swaths import fastest_turn
+    d, sp = M.deck_offset, M.cutting_width - 0.05
+    fig, axes = plt.subplots(2, 2, figsize=(7.2, 6.2))
+    for col, jump in enumerate((1, 4)):
+        a, b = Pose(0, 0, 0), Pose(2 * d, jump * sp, math.pi)
+        raw = fastest_turn(M, jump * sp)
+        smo = fastest_turn(M, jump * sp, smooth=True)
+        ax = axes[0, col]
+        sm = Trajectory(a, raw).sample(0.02)
+        ax.plot(sm.x, sm.y, color="0.55", lw=1.2, ls="--", label="arcs and lines")
+        _draw_path(ax, smo, a, b, f"{'next pass' if jump == 1 else 'four passes over'}: "
+                   f"{path_time(raw, M.v_mow, M.v_turn, M.v_reverse, M.t_shift):.2f} s "
+                   f"→ {path_time(smo, M.v_mow, M.v_turn, M.v_reverse, M.t_shift):.2f} s",
+                   mowers=False)
+        ax.legend(fontsize=7, loc="lower left")
+        ax = axes[1, col]
+        for segs, style, label in ((raw, dict(color="0.55", ls="--"), "arcs and lines"),
+                                   (smo, dict(color="#1565c0"), "with ramps")):
+            x, k = _profile(segs)
+            ax.plot(x, k, lw=1.3, label=label, **style)
+        cusp = np.cumsum([sg.length for sg in smo])[:-1][
+            [smo[i].reverse != smo[i + 1].reverse for i in range(len(smo) - 1)]]
+        for c in cusp:
+            ax.axvline(c, color="k", lw=0.6, ls=":")
+        ax.set_xlabel("distance driven (m)")
+        ax.set_ylabel("curvature (1/m)")
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=7)
+        ax.tick_params(labelsize=7)
+    fig.tight_layout()
+    save(fig, "clothoid.pdf")
+
+
+def fig_smooth_turns():
+    from mowersim.planning.swaths import turn_ahead, turn_time
+    sp = M.cutting_width - 0.05
+    j = np.arange(1, 11)
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.8))
+    for smooth, style, label in ((False, dict(color="0.5", ls="--", marker="o"),
+                                  "arcs and lines"),
+                                 (True, dict(color="#1565c0", marker="s"), "with ramps")):
+        axes[0].plot(j, [turn_time(M, k * sp, smooth=smooth) for k in j], ms=3.5, label=label,
+                     **style)
+        axes[1].plot(j, [turn_ahead(M, k * sp, smooth=smooth) for k in j], ms=3.5, label=label,
+                     **style)
+    axes[0].set_ylabel("time of the fastest turn (s)")
+    axes[1].set_ylabel(r"$a_{\mathrm{turn}}$ (m)")
+    for ax in axes:
+        ax.set_xlabel("jump (passes of s = 0.92 m)")
+        ax.set_xticks(j)
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=7)
+    fig.tight_layout()
+    save(fig, "smooth_turns.pdf")
+
+
+_SMOOTH = {}
+
+
+def _smooth_plan(name):
+    from mowersim.planning.planner import plan
+    if name not in _SMOOTH:
+        lawn = example_lawns()[name]
+        traj, info = plan(lawn, M, smooth=True)
+        _SMOOTH[name] = (lawn, traj, info, evaluate(lawn, M, traj))
+        from mowersim.planning.planner import time_breakdown
+        from mowersim.smooth import curvature_jumps
+        print(name, info["pattern"], info["compared"], info["headland_passes"],
+              info["smooth_stats"], "jumps", curvature_jumps(traj.segments, M),
+              {k: round(v / 60, 2) for k, v in time_breakdown(traj, M).items()},
+              _SMOOTH[name][3].as_dict(), flush=True)
+    return _SMOOTH[name]
+
+
+def fig_smooth_plans():
+    fig, axes = plt.subplots(3, 2, figsize=(7.2, 9.4),
+                             gridspec_kw={"height_ratios": [12, 20, 21]})
+    for row, name in enumerate(("rectangle", "l_shape", "garden")):
+        lawn, traj, info, res = _smooth_plan(name)
+        d = res.as_dict()
+        draw_lawn(axes[row, 0], lawn)
+        draw_trajectory(axes[row, 0], traj, lw=0.8)
+        draw_coverage(axes[row, 1], res, lawn)
+        axes[row, 0].set_title(f"{name}: {info['pattern']}, {info['headland_passes']} "
+                               f"headland passes")
+        axes[row, 1].set_title(f"cut {d['coverage_%']}%, {d['collisions']} collisions, "
+                               f"{d['time_min']} min")
+        for ax in axes[row]:
+            ax.tick_params(labelsize=7)
+    fig.tight_layout(h_pad=1.5)
+    save(fig, "smooth_plans.pdf")
+
+
+# ---------------------------------------------------------------- chapter 11
+
+def fig_controllers():
+    """Feedback and pure pursuit from an initial offset, through a forward turn."""
+    from mowersim.follow import Follower, follow
+    from mowersim.kinematics import Segment
+    from mowersim.planning.swaths import fastest_turn
+    sp = M.cutting_width - 0.05
+    segs = [Segment(0.0, 6.0)] + fastest_turn(M, 4 * sp, smooth=True) + [Segment(0.0, 6.0)]
+    ref = Trajectory(Pose(0, 0, 0), segs)
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.0), gridspec_kw={"width_ratios": [1.1, 1]})
+    sm = ref.sample(0.02)
+    axes[0].plot(sm.x, sm.y, color="0.4", lw=2.5, alpha=0.4, label="path")
+    for ctrl, color, label in (("feedback", "#1565c0", "feedback (ℓ = 1 m)"),
+                               ("pure_pursuit", "#ef6c00", "pure pursuit (0.8 m)")):
+        run = follow(ref, M, Follower(controller=ctrl), start=Pose(0.0, -0.3, 0.0))
+        ex = run.trajectory.sample(0.02)
+        axes[0].plot(ex.x, ex.y, color=color, lw=1.2, label=label)
+        travelled = np.cumsum([0.0] + [sg.length for sg in run.trajectory.segments])
+        dist = travelled[:len(run.errors)]
+        axes[1].plot(dist, run.errors * 100, color=color, lw=1.2, label=label)
+    axes[0].set_aspect("equal")
+    axes[0].legend(fontsize=7, loc="center left", bbox_to_anchor=(0.0, 0.5))
+    axes[0].set_title("from 0.3 m to the right of the path")
+    axes[1].set_xlabel("distance driven (m)")
+    axes[1].set_ylabel("distance to the path (cm)")
+    axes[1].grid(alpha=0.3)
+    axes[1].legend(fontsize=7)
+    for ax in axes:
+        ax.tick_params(labelsize=7)
+    fig.tight_layout()
+    save(fig, "controllers.pdf")
+
+
+def _follow_table(name="rectangle"):
+    from mowersim.follow import Follower, follow
+    lawn, traj, info, res = _smooth_plan(name)
+    rows = []
+    for ctrl in ("feedback", "pure_pursuit"):
+        for pos, head in ((0.0, 0.0), (0.02, 0.5), (0.05, 1.0), (0.10, 2.0)):
+            stats = []
+            for seed in range(3):
+                run = follow(traj, M, Follower(controller=ctrl, noise_pos=pos,
+                                               noise_heading_deg=head, seed=seed))
+                r = evaluate(lawn, M, run.trajectory)
+                e = run.errors
+                stats.append((np.sqrt((e ** 2).mean()), np.percentile(e, 95), e.max(),
+                              r.coverage, r.collisions, run.time / 60))
+            m = np.mean(stats, axis=0)
+            rows.append((ctrl, pos, head, *m))
+            print(f"{name} {ctrl:12s} {pos:.2f} {head:.1f}  rms {100 * m[0]:.1f} cm  p95 "
+                  f"{100 * m[1]:.1f}  max {100 * m[2]:.1f}  cut {100 * m[3]:.2f}%  "
+                  f"collisions {m[4]:.0f}  {m[5]:.2f} min (plan {100 * res.coverage:.2f}%)",
+                  flush=True)
+    return rows
+
+
+def fig_following():
+    from mowersim.follow import Follower, follow
+    lawn, traj, info, res = _smooth_plan("rectangle")
+    _follow_table("rectangle")
+    run = follow(traj, M, Follower(noise_pos=0.05, noise_heading_deg=1.0, seed=0))
+    r = evaluate(lawn, M, run.trajectory)
+    d = r.as_dict()
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.6))
+    draw_lawn(axes[0], lawn)
+    draw_trajectory(axes[0], run.trajectory, lw=0.7)
+    draw_coverage(axes[1], r, lawn)
+    axes[0].set_title("driven with 5 cm and 1° of noise")
+    axes[1].set_title(f"cut {d['coverage_%']}% (plan {100 * res.coverage:.2f}%), "
+                      f"{d['collisions']} collisions")
+    for ax in axes:
+        ax.tick_params(labelsize=7)
+    fig.tight_layout()
+    save(fig, "following.pdf")
+
+
+# ---------------------------------------------------------------- chapter 12
+
+def fig_learning():
+    from mowersim.planning.learn import FEATURES, dataset, fit, regret_study
+    x, y = dataset(500, M, seed=0)
+    tr, te = slice(0, 400), slice(400, 500)
+    model = fit(x[tr], y[tr])
+    pred = model.predict(x[te])
+    err_m = np.abs(pred - y[te]) / y[te]
+    err_e = np.abs(x[te, 0] - y[te]) / y[te]
+    print("weights", dict(zip(("1",) + FEATURES, np.round(model.weights, 4))))
+    print(f"test: estimate {100 * err_e.mean():.2f}% (max {100 * err_e.max():.1f}%), "
+          f"model {100 * err_m.mean():.2f}% (max {100 * err_m.max():.1f}%); "
+          f"estimate/plan {np.mean(x[te, 0] / y[te]):.3f}", flush=True)
+    r = np.array(regret_study(60, model, M))
+    best, est, mod = r.T
+    for name, v in (("estimate", est), ("model", mod)):
+        extra = (v - best) / best
+        print(f"{name}: extra {100 * extra.mean():.2f}% on average, worst {100 * extra.max():.1f}%,"
+              f" best direction in {(extra < 1e-9).sum()} of {len(r)} cells", flush=True)
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.0))
+    lim = (y[te].min() * 0.95, y[te].max() * 1.05)
+    axes[0].plot(lim, lim, color="k", lw=0.7)
+    axes[0].plot(y[te], x[te, 0], "o", ms=3, color="#ef6c00", label="estimate")
+    axes[0].plot(y[te], pred, "s", ms=3, color="#1565c0", label="learned model")
+    axes[0].set_xlabel("planned time (s)")
+    axes[0].set_ylabel("predicted time (s)")
+    axes[0].set_title("100 test cells")
+    axes[0].legend(fontsize=7)
+    bins = np.linspace(0, max(1e-3, 100 * ((est - best) / best).max()) + 0.5, 16)
+    axes[1].hist(100 * (est - best) / best, bins=bins, color="#ef6c00", alpha=0.7,
+                 label="estimate")
+    axes[1].hist(100 * (mod - best) / best, bins=bins, color="#1565c0", alpha=0.7,
+                 label="learned model")
+    axes[1].set_xlabel("extra time over the best direction (%)")
+    axes[1].set_ylabel("cells")
+    axes[1].set_title(f"choosing the direction of {len(r)} cells")
+    axes[1].legend(fontsize=7)
+    for ax in axes:
+        ax.grid(alpha=0.3)
+        ax.tick_params(labelsize=7)
+    fig.tight_layout()
+    save(fig, "learning.pdf")
+
+
+def fig_search_plans():
+    from mowersim.planning.planner import plan
+    for name in ("l_shape", "garden"):
+        lawn = example_lawns()[name]
+        for how in ("estimate", "search"):
+            traj, info = plan(lawn, M, pattern="adjacent", directions=how)
+            r = evaluate(lawn, M, traj)
+            dirs = [round(math.degrees(c.theta)) for c in info["cells"]]
+            print(f"{name} {how}: directions {dirs}, cut {100 * r.coverage:.2f}%, "
+                  f"{r.time / 60:.2f} min, collisions {r.collisions}", flush=True)
+
+
 FIGURES = {
     "ch2-5": [fig_lawns, fig_raster, fig_turning_circle, fig_effective_width, fig_next_pass,
               fig_ties, fig_rs_examples, fig_demo],
@@ -745,6 +986,9 @@ FIGURES = {
     "ch7": [fig_shift, fig_turn_times, fig_direction, fig_patterns],
     "ch8": [fig_decomposition, fig_garden_cells, fig_cell_plans],
     "ch9": [fig_hybrid, fig_final, fig_breakdown],
+    "ch10": [fig_clothoid, fig_smooth_turns, fig_smooth_plans],
+    "ch11": [fig_controllers, fig_following],
+    "ch12": [fig_learning, fig_search_plans],
 }
 
 

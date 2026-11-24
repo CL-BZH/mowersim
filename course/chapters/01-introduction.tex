@@ -40,10 +40,11 @@ This course builds the realistic version step by step.
 
 \section{What this course covers}
 
-This first edition lays the foundations: what a lawn is, how the mower moves,
+The first part lays the foundations: what a lawn is, how the mower moves,
 how to join two poses by the shortest drivable path, and how to measure a
-path. Each chapter derives its results completely, then shows where they are
-in the code.
+path. The second part builds a planner on them, then makes it drivable by a
+real machine and asks what search and learning can add. Each chapter
+derives its results completely, then shows where they are in the code.
 
 \begin{description}
   \item[Chapter~\ref{ch:lawn}, the lawn.]
@@ -66,10 +67,34 @@ in the code.
     lawn needs special treatment.
 \end{description}
 
-The following editions will build planners on these foundations: headland
-passes around the border, parallel swaths joined by feasible turns, the
-decomposition of complex lawns into simpler regions and the order in which to
-mow them, and finally learning and search to make the high-level choices.
+\begin{description}
+  \item[Chapter~\ref{ch:headlands}, headlands.]
+    \leavevmode\\
+    Passes that follow the border and the holes at a fixed clearance, with
+    the corners and the curves the mower can drive.
+  \item[Chapter~\ref{ch:swaths}, swaths and turns.]
+    \leavevmode\\
+    Parallel passes over the interior, the turns between them, the order of
+    the passes and their direction.
+  \item[Chapter~\ref{ch:split}, splitting complex lawns.]
+    \leavevmode\\
+    Cutting the interior into cells that parallel passes can mow.
+  \item[Chapter~\ref{ch:order}, order and transfers.]
+    \leavevmode\\
+    The order of the cells, the paths around obstacles (Hybrid A*), and the
+    complete planner.
+  \item[Chapter~\ref{ch:smooth}, smooth steering.]
+    \leavevmode\\
+    Paths whose curvature changes no faster than the steering can turn.
+  \item[Chapter~\ref{ch:following}, following the path.]
+    \leavevmode\\
+    A simulated controller with an imperfect estimate of the pose, and what
+    its errors cost.
+  \item[Chapter~\ref{ch:search}, search and learning.]
+    \leavevmode\\
+    Where the quick estimates of the planner err, and what planning more or
+    learning from plans can gain.
+\end{description}
 
 \section{The code}
 

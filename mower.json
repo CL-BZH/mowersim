@@ -17,5 +17,6 @@
  "v_mow": 1.2,
  "v_turn": 0.7,
  "v_reverse": 0.6,
- "t_shift": 2.0
+ "t_shift": 2.0,
+ "max_steer_rate_deg": 40.0
 }

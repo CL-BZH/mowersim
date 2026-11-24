@@ -40,6 +40,7 @@ class Mower:
     v_turn: float = 0.7              # on an arc, forward
     v_reverse: float = 0.6           # any reverse motion
     t_shift: float = 2.0             # stop, change gear, start again
+    max_steer_rate_deg: float = 40.0  # how fast the steering can turn (deg/s)
 
     def __post_init__(self):
         object.__setattr__(self, "blade_lateral", tuple(self.blade_lateral))

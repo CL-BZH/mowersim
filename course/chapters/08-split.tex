@@ -28,8 +28,11 @@ region on both sides of it.
 
 In the frame where $\theta$ points along the $x$ axis, call the lines
 parallel to $\theta$ \emph{horizontal}. The boustrophedon decomposition of
-Choset~\cite{choset2000coverage} (``boustrophedon'', as the ox turns at the end of
-the furrow) cuts a polygon with holes into monotone cells in two steps.
+Choset~\cite{choset2000coverage} (``boustrophedon'', as the ox turns at the
+end of the furrow) cuts a polygon with holes into monotone cells in two
+steps. It is one of the cellular decompositions reviewed by Galceran and
+Carreras~\cite{galceran2013survey}, together with the other approaches to
+coverage.
 
 \begin{description}
   \item[Cut.]
@@ -121,9 +124,11 @@ splits into its two arms.
 
 The decomposition depends on the direction of the sweep, and each cell can
 then be mowed in its own direction, as long as it is monotone in that
-direction. The planner tries the same candidate directions as in
-Chapter~\ref{ch:swaths} (the edges of the convex hull and every $15°$),
-and for each of them:
+direction. Oksanen and Visala~\cite{oksanen2009coverage} plan agricultural
+fields in the same spirit: a trapezoidal decomposition of the field, and a
+search for the best driving direction of each part. The planner tries the
+same candidate directions as in Chapter~\ref{ch:swaths} (the edges of the
+convex hull and every $15°$), and for each of them:
 
 \begin{description}
   \item[Decomposes.]

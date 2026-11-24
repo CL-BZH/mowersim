@@ -89,9 +89,12 @@ the mower drives, so only the direction of travel changes.
 
 \section{Pure pursuit}
 
-A classic alternative, \emph{pure pursuit}~\cite{coulter1992implementation}, aims at
-the point of the path a lookahead distance $L_d$ ahead of the closest one,
-and drives the arc that reaches it.
+A classic alternative, \emph{pure pursuit}~\cite{coulter1992implementation},
+aims at a goal point on the path ahead of the mower and drives the arc that
+reaches it. Coulter takes the goal point at the lookahead distance $L_d$
+from the vehicle, searching forward from the closest point of the path;
+the code here takes it $L_d$ further along the path than the closest
+point.
 
 \begin{proposition}{The arc through the goal point}{purepursuit}
   If the goal point is at the distance $D$ from the rear axle and at the

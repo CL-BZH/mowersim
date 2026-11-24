@@ -227,26 +227,32 @@ def join(end: Pose, last_len: float, p_start, h: float, length: float, mower: Mo
 
 def plan_passes(region, theta: float, mower: Mower, checker: Checker, start: Pose,
                 pattern: str = "adjacent", overlap: float = 0.05, mow_reverse: bool = False,
-                max_backoff: float = 3.0, step: float = 0.25) -> PassPlan:
+                max_backoff: float = 3.0, step: float = 0.25,
+                variant: tuple[bool, bool] | None = None) -> PassPlan:
     """Mow the swaths of ``region`` in the given order, starting from ``start``.
     The order may be run backwards and the first pass driven either way: the
-    variant with the fastest transfer from ``start`` is kept."""
+    variant (backwards, first pass forward) with the fastest transfer from
+    ``start`` is kept, unless ``variant`` imposes one."""
     from .search import hybrid_astar
     s = mower.cutting_width - overlap
     sw = swaths(region, theta, mower, overlap)
     base = pass_order(len(sw), pattern, mower, s)
     d = mower.deck_offset
+    variants = [variant] if variant is not None else [
+        (rev, ff) for rev in (False, True) for ff in (True, False)]
     best = None
-    for order in (base, base[::-1]):
-        for first_forward in (True, False):
-            p0, _, h0, _, _ = _pass_poses(sw[order[0]], theta, first_forward, d)
-            conn = connect(start, Pose(*p0, h0), mower, checker, mow=False)
-            if conn is not None and (best is None or conn.time < best[0].time):
-                best = (conn, order, first_forward)
-    if best is None:                       # no direct path: search, with the base order
-        p0, _, h0, _, _ = _pass_poses(sw[base[0]], theta, True, d)
+    for rev, first_forward in variants:
+        order = base[::-1] if rev else base
+        p0, _, h0, _, _ = _pass_poses(sw[order[0]], theta, first_forward, d)
+        conn = connect(start, Pose(*p0, h0), mower, checker, mow=False)
+        if conn is not None and (best is None or conn.time < best[0].time):
+            best = (conn, order, first_forward)
+    if best is None:                       # no direct path: search
+        rev, first_forward = variants[0]
+        order = base[::-1] if rev else base
+        p0, _, h0, _, _ = _pass_poses(sw[order[0]], theta, first_forward, d)
         path = hybrid_astar(start, Pose(*p0, h0), mower, checker) or []
-        best = (Connection(path, 0.0), base, True)
+        best = (Connection(path, 0.0), order, first_forward)
     conn, order, first_forward = best
     traj = Trajectory(start).extend(conn.segments)
     backed = failures = 0

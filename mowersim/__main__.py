@@ -116,14 +116,15 @@ def cmd_evaluate(a):
 
 
 def cmd_plan(a):
-    from .planning.swaths import plan_simple
+    from .planning.planner import plan, time_breakdown
     from .viz import animate, plot_result
     lawn, m = Lawn.from_file(a.lawn), _mower(a)
-    theta = None if a.theta is None else math.radians(a.theta)
-    traj, info = plan_simple(lawn, m, pattern=a.pattern, theta=theta)
+    traj, info = plan(lawn, m, pattern=a.pattern, order=a.order)
     res = evaluate(lawn, m, traj, res=a.res)
-    print(f"direction {math.degrees(info['theta']):.1f} deg, {info['headland_passes']} "
-          f"headland passes, {info['passes']} passes")
+    dirs = ", ".join(f"{math.degrees(c.theta):.0f}" for c in info["cells"])
+    print(f"order of the passes: {info['pattern']}; {info['headland_passes']} headland passes; "
+          f"{len(info['cells'])} cells (directions {dirs} deg); {info['passes']} passes")
+    print("time (s):", {k: round(v, 1) for k, v in time_breakdown(traj, m).items()})
     print(json.dumps(res.as_dict(), indent=1))
     if a.save:
         traj.save(a.save)
@@ -167,11 +168,12 @@ def main(argv=None):
     s.add_argument("--res", type=float, default=0.05)
     s.add_argument("--png")
     s.set_defaults(func=cmd_evaluate)
-    s = sub.add_parser("plan", help="plan a path: headland, then parallel passes")
+    s = sub.add_parser("plan", help="plan a path: headland, cells, passes (course, ch. 9)")
     s.add_argument("lawn")
-    s.add_argument("--pattern", choices=("adjacent", "skip"), default="adjacent",
-                   help="order of the passes (course, chapter 7)")
-    s.add_argument("--theta", type=float, help="direction of the passes in degrees")
+    s.add_argument("--pattern", choices=("best", "adjacent", "skip"), default="best",
+                   help="order of the passes (course, chapter 7); best tries both")
+    s.add_argument("--order", choices=("optimal", "greedy"), default="optimal",
+                   help="order of the cells (course, chapter 9)")
     s.add_argument("--res", type=float, default=0.05)
     s.add_argument("--save", help="save the trajectory (JSON)")
     s.add_argument("--png")

@@ -630,12 +630,121 @@ def fig_cell_plans():
     save(fig, "cell_plans.pdf")
 
 
+# ----------------------------------------------------------------- chapter 9
+
+def fig_hybrid():
+    from mowersim.planning.common import Checker
+    from mowersim.planning.search import grid_distance, hybrid_astar
+    from mowersim.geometry import rectangle as rect
+    lawn = Lawn.make(rect(0, 0, 16, 10), holes=[rect(7.5, 0.0001, 8.5, 6.5)])
+    ck = Checker(lawn, M, 0.05)
+    a, b = Pose(3, 2, math.pi / 2), Pose(13, 2, -math.pi / 2)
+    trace = []
+    segs = hybrid_astar(a, b, M, ck, trace=trace)
+    dist, k = grid_distance(ck, b)
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.9))
+    r = ck.raster
+    cell = r.res * k
+    ext = (r.x0, r.x0 + dist.shape[1] * cell, r.y0, r.y0 + dist.shape[0] * cell)
+    d = np.where(np.isfinite(dist), dist, np.nan)
+    im = axes[0].imshow(d, origin="lower", extent=ext, cmap="viridis")
+    fig.colorbar(im, ax=axes[0], fraction=0.035, pad=0.02)
+    axes[0].set_title("heuristic: grid distance to the goal (m)")
+    draw_lawn(axes[1], lawn)
+    xs = [p.x for p in trace]
+    ys = [p.y for p in trace]
+    axes[1].plot(xs, ys, ".", color="#8d6e63", ms=1.5, alpha=0.6)
+    _draw_path(axes[1], segs, a, b, f"Hybrid A*: {len(trace)} poses expanded, "
+               f"{path_time(segs, M.v_mow, M.v_turn, M.v_reverse, M.t_shift):.1f} s",
+               mowers=False)
+    for ax in axes:
+        ax.add_patch(plt.Rectangle((7.5, 0), 1, 6.5, color="#5d4037", zorder=3))
+        ax.plot(*zip(*[(a.x, a.y)]), "o", color="#2e7d32", ms=4, zorder=6)
+        ax.plot(*zip(*[(b.x, b.y)]), "o", color="#6a1b9a", ms=4, zorder=6)
+        ax.set_xlim(0, 16)
+        ax.set_ylim(0, 10)
+        ax.set_aspect("equal")
+        ax.tick_params(labelsize=7)
+    fig.tight_layout()
+    save(fig, "hybrid.pdf")
+
+
+_FINAL = {}
+
+
+def _final(name):
+    from mowersim.planning.planner import plan
+    if name not in _FINAL:
+        lawn = example_lawns()[name]
+        traj, info = plan(lawn, M)
+        _FINAL[name] = (lawn, traj, info, evaluate(lawn, M, traj))
+    return _FINAL[name]
+
+
+def fig_final():
+    fig, axes = plt.subplots(3, 2, figsize=(7.2, 9.4),
+                             gridspec_kw={"height_ratios": [12, 20, 21]})
+    for row, name in enumerate(("rectangle", "l_shape", "garden")):
+        lawn, traj, info, res = _final(name)
+        d = res.as_dict()
+        draw_lawn(axes[row, 0], lawn)
+        draw_trajectory(axes[row, 0], traj, lw=0.8)
+        for rank, (c, _) in enumerate(info["plans"]):
+            q = c.polygon.representative_point()
+            axes[row, 0].text(q.x, q.y, f"{rank + 1}", fontsize=8, ha="center", va="center",
+                              color="white", zorder=9, fontweight="bold",
+                              bbox=dict(boxstyle="circle,pad=0.2", fc="#37474f", ec="none"))
+        draw_coverage(axes[row, 1], res, lawn)
+        axes[row, 0].set_title(f"{name}: {info['pattern']}, {len(info['cells'])} cell"
+                               f"{'s' if len(info['cells']) > 1 else ''}")
+        axes[row, 1].set_title(f"cut {d['coverage_%']}%, {d['collisions']} collisions, "
+                               f"{d['time_min']} min, η = {d['efficiency']}")
+        for ax in axes[row]:
+            ax.tick_params(labelsize=7)
+    fig.tight_layout(h_pad=1.5)
+    save(fig, "final.pdf")
+
+
+def fig_breakdown():
+    from mowersim.planning.planner import time_breakdown
+    names = ("rectangle", "l_shape", "garden")
+    parts = (("passes", "straight, blades on", "#43a047"),
+             ("turns", "arcs and reverse, blades on", "#fb8c00"),
+             ("transfers", "blades off", "#9e9e9e"),
+             ("stops", "changes of direction", "#e53935"))
+    fig, ax = plt.subplots(figsize=(7.2, 2.4))
+    for y, name in enumerate(names):
+        lawn, traj, info, res = _final(name)
+        b = time_breakdown(traj, M)
+        left = 0.0
+        for key, label, color in parts:
+            w = b[key] / 60
+            ax.barh(y, w, left=left, color=color, label=label if y == 0 else None)
+            if w > 0.6:
+                ax.text(left + w / 2, y, f"{w:.1f}", ha="center", va="center", fontsize=7,
+                        color="white")
+            left += w
+        lb = res.as_dict()["lower_bound_m"] / M.v_mow / 60
+        ax.plot([lb, lb], [y - 0.4, y + 0.4], color="k", lw=1.5,
+                label="lower bound" if y == 0 else None)
+    ax.set_yticks(range(len(names)))
+    ax.set_yticklabels(names)
+    ax.invert_yaxis()
+    ax.set_xlabel("time (min)")
+    ax.legend(fontsize=7, ncol=5, loc="lower center", bbox_to_anchor=(0.5, 1.0),
+              frameon=False, handlelength=1.2, columnspacing=1.0)
+    ax.grid(axis="x", alpha=0.3)
+    fig.tight_layout()
+    save(fig, "breakdown.pdf")
+
+
 FIGURES = {
     "ch2-5": [fig_lawns, fig_raster, fig_turning_circle, fig_effective_width, fig_next_pass,
               fig_ties, fig_rs_examples, fig_demo],
     "ch6": [fig_offsets, fig_swing, fig_corner, fig_headlands],
     "ch7": [fig_shift, fig_turn_times, fig_direction, fig_patterns],
     "ch8": [fig_decomposition, fig_garden_cells, fig_cell_plans],
+    "ch9": [fig_hybrid, fig_final, fig_breakdown],
 }
 
 

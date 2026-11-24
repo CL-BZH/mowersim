@@ -344,3 +344,40 @@ def test_trim_piece_keeps_the_free_stretch():
     assert ck.free(start2, segs)
     end = Trajectory(start2, segs).end
     assert end.x == pytest.approx(20 - 0.05 - 1.55, abs=0.08)  # front reach 1.55
+
+
+# ------------------------------------------------------------- order of cells
+def test_held_karp_matches_brute_force():
+    import itertools
+    from mowersim.planning.planner import Way, order_cells
+    rng = random.Random(3)
+    ways = [[Way((False, True), Pose(rng.uniform(0, 20), rng.uniform(0, 20), 0.0),
+                 Pose(rng.uniform(0, 20), rng.uniform(0, 20), 0.0)) for _ in range(3)]
+            for _ in range(4)]
+
+    def cost(p, q):
+        return math.hypot(p.x - q.x, p.y - q.y)
+    start = Pose(0, 0, 0)
+    seq, total = order_cells(start, ways, cost)
+    best = math.inf
+    for perm in itertools.permutations(range(4)):
+        for choice in itertools.product(range(3), repeat=4):
+            here, t = start, 0.0
+            for i, a in zip(perm, choice):
+                t += cost(here, ways[i][a].entry)
+                here = ways[i][a].exit
+            best = min(best, t)
+    assert total == pytest.approx(best)
+    assert sorted(i for i, _ in seq) == [0, 1, 2, 3]
+
+
+def test_time_breakdown_adds_up():
+    from mowersim.kinematics import Segment
+    from mowersim.planning.planner import time_breakdown
+    segs = [Segment(0.0, 5.0, mow=True), Segment(0.5, 2.0, mow=True),
+            Segment(0.0, 1.0, reverse=True, mow=True), Segment(0.0, 3.0, mow=False)]
+    t = Trajectory(Pose(0, 0, 0), segs)
+    b = time_breakdown(t, M)
+    assert sum(b.values()) == pytest.approx(path_time(segs, M.v_mow, M.v_turn, M.v_reverse,
+                                                      M.t_shift))
+    assert b["stops"] == pytest.approx(2 * M.t_shift)

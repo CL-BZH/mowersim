@@ -1,6 +1,6 @@
 """Collision-free paths between two poses among obstacles: Hybrid A*.
 
-The search (after Dolgov, Thrun, Montemerlo and Diebel, 2008) explores poses
+The search (after Dolgov, Thrun, Montemerlo and Diebel, 2010) explores poses
 reached by short arcs of a few fixed curvatures, forward and in reverse, and
 keeps the best pose found in each cell of a grid over (x, y, theta). Its cost
 is the driving time of the path model (path_time), with a penalty at each
@@ -61,8 +61,10 @@ def grid_distance(checker: Checker, goal: Pose, res: float = 0.25) -> tuple:
 
 def hybrid_astar(start: Pose, goal: Pose, mower: Mower, checker: Checker,
                  step: float = 0.6, xy_res: float = 0.3, theta_bins: int = 72,
-                 shot_every: int = 10, max_expansions: int = 6000) -> list[Segment] | None:
-    """Segments (blades off) of a collision-free path from start to goal, or None."""
+                 shot_every: int = 10, max_expansions: int = 6000,
+                 trace: list | None = None) -> list[Segment] | None:
+    """Segments (blades off) of a collision-free path from start to goal, or None.
+    If ``trace`` is a list, the expanded poses are appended to it."""
     if not checker.free_poses(goal.x, goal.y, goal.theta)[0]:
         return None
     direct = connect(start, goal, mower, checker, mow=False)
@@ -96,6 +98,8 @@ def hybrid_astar(start: Pose, goal: Pose, mower: Mower, checker: Checker,
         _, _, idx = heapq.heappop(heap)
         pose, cost, _, _, rev = nodes[idx]
         expansions += 1
+        if trace is not None:
+            trace.append(pose)
         if expansions % shot_every == 0:
             shot = connect(pose, goal, mower, checker, mow=False)
             if shot is not None:

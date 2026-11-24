@@ -13,26 +13,7 @@ a car: it cannot turn on the spot, its tightest turn has a radius of more than
 a metre, and to go back along the next strip it must either make a wide loop
 or a manoeuvre with a reverse leg.
 
-This course builds the realistic version step by step.
-
-\section{From a grid to a real lawn}
-
-\begin{center}
-\begin{tabular}{@{}lll@{}}
-  \toprule
-  & grid model & this course \\
-  \midrule
-  lawn & square cells & polygon in metres, with holes \\
-  mower & a cell and one of 8 headings & pose $(x, y, \theta)$, real
-    dimensions \\
-  motion & jump to a neighbouring cell & arcs of curvature
-    $|\kappa| \le \kmax$, forward or reverse \\
-  mowed area & the cells visited & the area swept by the blades \\
-  cost & number of moves and turns & time, missed area, area cut twice \\
-  lower bound & $N - 1$ moves & area divided by an effective width \\
-  \bottomrule
-\end{tabular}
-\end{center}
+This course builds such paths step by step.
 
 \section{What this course covers}
 

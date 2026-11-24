@@ -29,7 +29,7 @@ blades (the job of a string trimmer), and the corners.
 
 ## What the course covers
 
-1. **Introduction**: from a grid of cells to a real lawn and a real machine.
+1. **Introduction**: what a good path is, and what the course covers.
 2. **The lawn**: polygons with holes, the shoelace formula, the
    point-in-polygon test, and the raster on which coverage is measured, with
    a bound on its error.

@@ -327,9 +327,48 @@ def build_ring(coords: np.ndarray, offset: float, mower: Mower, checker: Checker
             steps = (b1 - b0) % n or n
             start = Pose(*(pts[b0] + vs[b0].t_out * unit(heading[b0])), heading[b0])
             segs = walk(pts, vs, heading, length, b0, vs[b0].t_out, steps)
-            pieces.append((start, [sg for sg in segs if sg.length > 1e-9]))
+            start, segs = trim_piece(start, [sg for sg in segs if sg.length > 1e-9], checker)
+            if segs:
+                pieces.append((start, segs))
     corners = sum(v.kind in ("corner", "break") for v in vs)
     return Ring(pieces, offset, corners, failed)
+
+
+def cut_segments(start: Pose, segs: list[Segment], s_a: float, s_b: float):
+    """The part of a path between the distances s_a and s_b from its start."""
+    from ..kinematics import advance
+    out, pose, s0 = [], start, 0.0
+    new_start = None
+    for sg in segs:
+        s1 = s0 + sg.length
+        a, b = max(s_a, s0), min(s_b, s1)
+        if b > a + 1e-9:
+            if new_start is None:
+                new_start = advance(pose, sg.curvature, sg.signed_length * (a - s0) / sg.length)
+            out.append(Segment(sg.curvature, b - a, sg.reverse, sg.mow))
+        pose = advance(pose, sg.curvature, sg.signed_length)
+        s0 = s1
+    return (new_start or start), out
+
+
+def trim_piece(start: Pose, segs: list[Segment], checker: Checker, step: float = 0.05):
+    """Keep the longest collision-free stretch of an open piece: at a break the
+    piece may end (or start) too close to the corner for the mower's outline."""
+    smp = Trajectory(start, list(segs)).sample(step)
+    ok = checker.free_poses(smp.x, smp.y, smp.theta)
+    if ok.all():
+        return start, segs
+    best, run0 = (0, 0), None
+    for i, f in enumerate(list(ok) + [False]):
+        if f and run0 is None:
+            run0 = i
+        elif not f and run0 is not None:
+            if i - run0 > best[1] - best[0]:
+                best = (run0, i)
+            run0 = None
+    if best[1] - best[0] < 2:
+        return start, []
+    return cut_segments(start, segs, float(smp.s[best[0]]), float(smp.s[best[1] - 1]))
 
 
 def walk(pts, vs, heading, length, i0: int, s0: float, steps: int) -> list[Segment]:
@@ -401,18 +440,32 @@ def rings_at(lawn: Lawn, offset: float, mower: Mower, checker: Checker, need: fl
 
 def plan_headland(lawn: Lawn, mower: Mower, passes: int = 2, overlap: float = 0.05,
                   margin: float = 0.05, mow_reverse: bool = False,
-                  checker: Checker | None = None, max_slack: float = 0.5) -> Headland:
+                  checker: Checker | None = None, max_slack: float = 0.5,
+                  break_cost: float = 4.0) -> Headland:
     """Headland rings. The first ring keeps the clearance h + margin + e from the
-    border, with the smallest extra slack e (by steps of 5 cm) for which every one
-    of its corners has a collision-free path."""
+    border. The extra slack e (by steps of 5 cm) is the one that minimises
+    e P + break_cost F, where P is the length of the border and F the number of
+    corners left without a collision-free path (each one cuts its ring) plus
+    the number of pieces that still collide (the outline grazes the margin when
+    e = 0): the
+    slack leaves a strip of area about e P uncut, a break a patch of about
+    ``break_cost`` square metres."""
     checker = checker or Checker(lawn, mower, margin=margin)
     s = mower.cutting_width - overlap
     base = lateral_half_width(mower) + margin
+    border = lawn_polygon(lawn).boundary.length
+    best = None
     for slack in np.arange(0.0, max_slack + 1e-9, 0.05):
-        c1 = base + float(slack)
-        first = rings_at(lawn, c1, mower, checker, c1, mow_reverse)
-        if first and all(r.failed == 0 for r in first):
+        rings = rings_at(lawn, base + float(slack), mower, checker, base + float(slack),
+                         mow_reverse)
+        failed = sum(r.failed + sum(not checker.free(*pc) for pc in r.pieces)
+                     for r in rings) if rings else 10 ** 6
+        score = (slack * border + break_cost * failed, failed)
+        if best is None or score < best[0]:
+            best = (score, base + float(slack), rings)
+        if failed == 0:
             break
+    _, c1, first = best
     rings = list(first)
     for k in range(1, passes):
         rings += rings_at(lawn, c1 + k * s, mower, checker, c1, mow_reverse)

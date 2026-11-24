@@ -304,3 +304,43 @@ def test_passes_on_a_rectangular_region():
         pp = plan_passes(region, 0.0, M, ck, Pose(10, 1.5, math.pi), pattern)
         assert pp.turn_failures == 0 and sorted(pp.order) == list(range(pp.passes))
         assert ck.free(Pose(10, 1.5, math.pi), pp.trajectory.segments)
+
+
+# ------------------------------------------------------------------- cells
+def _pond():
+    from shapely.geometry import Polygon, box
+    return box(0, 0, 20, 14).difference(Polygon([(7, 5), (12, 4), (13, 9), (8, 10)]))
+
+
+def test_boustrophedon_cells_of_a_region_with_a_pond():
+    from shapely.ops import unary_union
+    from mowersim.planning.cells import decompose, is_monotone, slices
+    pond = _pond()
+    assert sum(len(s) for s in slices(pond, 0.0)) == 8
+    cells = decompose(pond, 0.0)
+    assert len(cells) == 4
+    assert all(is_monotone(c.polygon, 0.0) for c in cells)
+    assert unary_union([c.polygon for c in cells]).symmetric_difference(pond).area < 1e-6
+    assert not is_monotone(pond, 0.0)
+
+
+def test_end_jump_rule_splits_the_l_shape():
+    from shapely.geometry import Polygon
+    from mowersim.planning.cells import decompose
+    ell = Polygon([(2, 2), (22, 2), (22, 7), (9, 7), (9, 18), (2, 18)])
+    assert len(decompose(ell, 0.0, max_jump=None)) == 1
+    assert len(decompose(ell, 0.0)) == 2
+    assert len(decompose(ell, math.pi / 2)) == 2
+
+
+def test_trim_piece_keeps_the_free_stretch():
+    from mowersim.planning.common import Checker
+    from mowersim.kinematics import Segment
+    from mowersim.planning.headland import trim_piece
+    lawn = example_lawns()["rectangle"]
+    ck = Checker(lawn, M, 0.05)
+    start = Pose(2, 1, 0.0)                    # drives into the right border at x = 20
+    start2, segs = trim_piece(start, [Segment(0.0, 20.0)], ck)
+    assert ck.free(start2, segs)
+    end = Trajectory(start2, segs).end
+    assert end.x == pytest.approx(20 - 0.05 - 1.55, abs=0.08)  # front reach 1.55

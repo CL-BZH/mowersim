@@ -129,16 +129,24 @@ The code therefore uses a first clearance
 \[
   c_1 = h + m + \varepsilon,
 \]
-with the smallest extra slack $\varepsilon$ (by steps of
-\SI{5}{\centi\metre}) for which every corner of the first ring has a
-collision-free path (Section~\ref{sec:corners}). On the rectangle and the
-L-shaped lawn, $\varepsilon = \SI{0.05}{\metre}$ and $c_1 =
-\SI{0.615}{\metre}$; the garden, with its sharp tip, needs
-$\varepsilon = \SI{0.50}{\metre}$ and $c_1 = \SI{1.065}{\metre}$. Along the
-border, a strip of width $c_1 - w/2$ is out of reach of the blades
-(\SI{0.13}{\metre} on the rectangle): on a real lawn, the job of a string
-trimmer. A clearance that varies along the border, larger only near tight
-bends, would reduce it on the garden; it is a refinement left for later.
+with an extra slack $\varepsilon$ chosen by steps of \SI{5}{\centi\metre},
+from $0$ to \SI{0.5}{\metre}. A larger slack leaves a strip of area about
+$\varepsilon P$ out of reach along the border, where $P$ is the length of
+the border and of the holes; a corner of the first ring without a
+collision-free path (Section~\ref{sec:corners}) cuts the ring and leaves a
+patch of a few square metres. The planner keeps the slack that minimises
+\[
+  \varepsilon P + 4F,
+\]
+with $F$ the number of such corners (and of pieces of the ring that still
+collide: at $\varepsilon = 0$ the outline grazes the margin), counting
+\SI{4}{\metre\squared} per failure. On the three example lawns it keeps
+$\varepsilon = \SI{0.05}{\metre}$ and $c_1 = \SI{0.615}{\metre}$: every
+corner fits on the rectangle and the L-shape, and the garden accepts one
+cut ring, at its sharp tip, rather than a slack of \SI{0.5}{\metre} all
+along its \SI{105}{\metre} of border and holes. Along the border, a strip
+of width $c_1 - w/2 = \SI{0.13}{\metre}$ is out of reach of the blades: on
+a real lawn, the job of a string trimmer.
 
 \section{Following a curved border}
 
@@ -224,7 +232,8 @@ the fastest Reeds--Shepp path that stays on the lawn
 Where the offset region pinches (Figure~\ref{fig:offsets}, middle), the ring
 can have a near-hairpin corner that nothing can follow. The ring is then cut
 there: it becomes an open path, which the mower drives in whichever
-direction is easier to reach. Two corners closer than \SI{2}{\metre} are
+direction is easier to reach, trimmed at both ends to its longest stretch
+where the mower's outline stays on the lawn. Two corners closer than \SI{2}{\metre} are
 first merged into one, at the meeting point of the edges before and after
 them, since no manoeuvre fits between them.
 
@@ -307,7 +316,7 @@ a path around them (the search of Chapter~\ref{ch:order}).
   \midrule
   rectangle & \SI{0.615}{\metre} & 43.1\% & 0 & \SI{2.65}{\minute} \\
   L-shape & \SI{0.615}{\metre} & 43.8\% & 0 & \SI{3.72}{\minute} \\
-  garden & \SI{1.065}{\metre} & 42.4\% & 0 & \SI{7.13}{\minute} \\
+  garden & \SI{0.615}{\metre} & 43.9\% & 0 & \SI{6.93}{\minute} \\
   \bottomrule
 \end{tabular}
 \end{center}

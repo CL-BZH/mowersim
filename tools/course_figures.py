@@ -511,11 +511,131 @@ def fig_patterns():
     save(fig, "patterns.pdf")
 
 
+# ----------------------------------------------------------------- chapter 8
+
+def _pond():
+    from shapely.geometry import Polygon, box
+    return box(0, 0, 20, 14).difference(Polygon([(7, 5), (12, 4), (13, 9), (8, 10)]))
+
+
+def _fill_cells(ax, cells, labels=True, swath_lines=False):
+    from mowersim.planning.common import polygons
+    from mowersim.planning.swaths import swaths
+    colors = ["#90caf9", "#ffcc80", "#a5d6a7", "#ef9a9a", "#ce93d8", "#fff59d", "#80cbc4"]
+    for k, c in enumerate(cells):
+        for p in polygons(c.polygon):
+            x, y = p.exterior.xy
+            ax.fill(x, y, color=colors[k % len(colors)], alpha=0.75, lw=0)
+            ax.plot(x, y, color="k", lw=0.7)
+            for h in p.interiors:
+                hx, hy = h.xy
+                ax.fill(hx, hy, color="white")
+                ax.plot(hx, hy, color="k", lw=0.7)
+        if swath_lines:
+            for sw in swaths(c.polygon, c.theta, M):
+                ax.plot([sw.a[0], sw.b[0]], [sw.a[1], sw.b[1]], color="#1565c0", lw=0.6)
+        if labels:
+            q = c.polygon.representative_point()
+            txt = f"{k + 1}" + (f"\n{math.degrees(c.theta):.0f}°" if swath_lines else "")
+            ax.text(q.x, q.y, txt, ha="center", va="center", fontsize=7,
+                    bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.8))
+    ax.set_aspect("equal")
+    ax.tick_params(labelsize=7)
+
+
+def fig_decomposition():
+    from mowersim.planning.cells import best_decomposition, decompose, slices
+    pond = _pond()
+    fig, axes = plt.subplots(2, 2, figsize=(7.2, 6.4))
+    # strips
+    ax = axes[0, 0]
+    class _C:
+        def __init__(self, p):
+            self.polygon, self.theta = p, 0.0
+    pieces = [_C(p) for strip in slices(pond, 0.0) for p in strip]
+    _fill_cells(ax, pieces, labels=False)
+    ys = sorted({y for _, y in pond.exterior.coords} | {y for _, y in pond.interiors[0].coords})
+    for y in ys:
+        ax.axhline(y, color="#c62828", lw=0.6, ls="--")
+    ax.set_title(f"cut at every vertex: {len(pieces)} pieces")
+    # merged
+    ax = axes[0, 1]
+    cells = decompose(pond, 0.0)
+    _fill_cells(ax, cells)
+    hole = np.asarray(pond.interiors[0].coords)[:-1]
+    for k in (int(np.argmin(hole[:, 1])), int(np.argmax(hole[:, 1]))):
+        ax.plot(*hole[k], "o", color="#c62828", ms=5, zorder=5)
+    ax.set_title(f"merged one to one: {len(cells)} cells")
+    # L-shape interior
+    _, h, _ = _headland("l_shape")
+    ax = axes[1, 0]
+    one = decompose(h.interior, 0.0, max_jump=None)
+    two = decompose(h.interior, 0.0)
+    _fill_cells(ax, two)
+    ax.set_title(f"L-shape, θ = 0°: {len(one)} cell one to one,\n"
+                 f"{len(two)} with the rule on the ends")
+    ax = axes[1, 1]
+    best = best_decomposition(h.interior, M)
+    _fill_cells(ax, best, swath_lines=True)
+    ax.set_title(f"L-shape, best: {len(best)} cells, own directions")
+    fig.tight_layout()
+    save(fig, "decomposition.pdf")
+
+
+def fig_garden_cells():
+    from mowersim.planning.cells import best_decomposition
+    from mowersim.planning.common import Checker
+    from mowersim.planning.headland import plan_headland
+    lawn = example_lawns()["garden"]
+    h = plan_headland(lawn, M, passes=2, checker=Checker(lawn, M, 0.05))
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.7))
+    for ax, own in ((axes[0], False), (axes[1], True)):
+        draw_lawn(ax, lawn, alpha=0.5)
+        cells = best_decomposition(h.interior, M, own_directions=own)
+        _fill_cells(ax, cells, swath_lines=True)
+        ax.set_title(("one direction" if not own else "a direction per cell")
+                     + f": {len(cells)} cells")
+    fig.tight_layout()
+    save(fig, "garden_cells.pdf")
+
+
+_CELLPLANS = {}
+
+
+def _cell_plan(name, pattern):
+    from mowersim.planning.cells import plan_cells
+    if (name, pattern) not in _CELLPLANS:
+        lawn = example_lawns()[name]
+        traj, info = plan_cells(lawn, M, pattern=pattern)
+        _CELLPLANS[name, pattern] = (lawn, traj, info, evaluate(lawn, M, traj))
+    return _CELLPLANS[name, pattern]
+
+
+def fig_cell_plans():
+    rows = (("l_shape", "skip"), ("garden", "adjacent"))
+    fig, axes = plt.subplots(2, 2, figsize=(7.2, 6.6), gridspec_kw={"height_ratios": [20, 21]})
+    for row, (name, pattern) in enumerate(rows):
+        lawn, traj, info, res = _cell_plan(name, pattern)
+        d = res.as_dict()
+        draw_lawn(axes[row, 0], lawn)
+        draw_trajectory(axes[row, 0], traj, lw=0.8)
+        draw_coverage(axes[row, 1], res, lawn)
+        axes[row, 0].set_title(f"{name}, {pattern}: {len(info['cells'])} cells, "
+                               f"{info['passes']} passes")
+        axes[row, 1].set_title(f"cut {d['coverage_%']}%, {d['collisions']} collisions, "
+                               f"{d['time_min']} min")
+        for ax in axes[row]:
+            ax.tick_params(labelsize=7)
+    fig.tight_layout(h_pad=1.5)
+    save(fig, "cell_plans.pdf")
+
+
 FIGURES = {
     "ch2-5": [fig_lawns, fig_raster, fig_turning_circle, fig_effective_width, fig_next_pass,
               fig_ties, fig_rs_examples, fig_demo],
     "ch6": [fig_offsets, fig_swing, fig_corner, fig_headlands],
     "ch7": [fig_shift, fig_turn_times, fig_direction, fig_patterns],
+    "ch8": [fig_decomposition, fig_garden_cells, fig_cell_plans],
 }
 
 

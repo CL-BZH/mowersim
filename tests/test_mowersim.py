@@ -208,3 +208,53 @@ def test_cli(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Reeds-Shepp" in out and "coverage_%" in out
     assert (tmp_path / "d.png").stat().st_size > 0
+
+
+# ---------------------------------------------------------------- headlands
+def test_swing_out_is_the_front_corner_circle():
+    from mowersim.planning.headland import swing_out
+    for R in (1.43, 3.0, 10.0):
+        # front corner of the body (1.55, -0.475); half-width 0.515 (deck housing)
+        assert swing_out(M, R) == pytest.approx(math.hypot(1.55, R + 0.475) - (R + 0.515),
+                                                abs=2e-3)
+    assert swing_out(M, 2.0) > swing_out(M, 10.0) > 0
+
+
+def test_shift_and_corner_paths_land_where_they_should():
+    from mowersim.planning.headland import corner_path, shift_arcs, unit
+    segs, d = shift_arcs(0.4, 3.0, left=True)
+    end = Trajectory(Pose(0, 0, 0), segs).end
+    assert (end.x, end.y, end.theta) == pytest.approx((d, 0.4, 0.0), abs=1e-9)
+    p = np.array([5.0, 1.0])
+    for phi in (math.pi / 2, -math.pi / 2, 2.0):
+        segs, b_in, b_out = corner_path(p, 0.0, phi, phi, 0.5, 2.0, 4.0)
+        end = Trajectory(Pose(*(p - b_in * unit(0.0)), 0.0), segs).end
+        target = p + b_out * unit(phi)
+        assert (end.x, end.y) == pytest.approx(tuple(target), abs=1e-9)
+        assert pify(end.theta - phi) == pytest.approx(0, abs=1e-9)
+
+
+def test_headland_on_the_rectangle():
+    from mowersim.planning.common import Checker
+    from mowersim.planning.headland import link_rings, plan_headland
+    lawn = example_lawns()["rectangle"]
+    ck = Checker(lawn, M, 0.05)
+    h = plan_headland(lawn, M, passes=2, checker=ck)
+    assert all(r.closed for r in h.rings) and len(h.rings) == 2
+    r = evaluate(lawn, M, link_rings(h.rings, M, ck))
+    assert r.collisions == 0 and r.coverage > 0.4
+    assert h.interior.area < lawn.area
+
+
+def test_hybrid_astar_goes_around_an_obstacle():
+    from mowersim.planning.common import Checker
+    from mowersim.planning.search import hybrid_astar
+    # a wall across the middle of a 16 x 10 lawn, with a passage at the top
+    lawn = Lawn.make(rectangle(0, 0, 16, 10), holes=[rectangle(7.5, 0.0001, 8.5, 6.5)])
+    ck = Checker(lawn, M, 0.05)
+    a, b = Pose(3, 2, math.pi / 2), Pose(13, 2, -math.pi / 2)
+    assert candidates(a, b, M.min_radius)            # a direct path exists...
+    segs = hybrid_astar(a, b, M, ck)
+    assert segs is not None and ck.free(a, segs)     # ...but this one avoids the wall
+    end = Trajectory(a, segs).end
+    assert math.hypot(end.x - b.x, end.y - b.y) < 1e-5

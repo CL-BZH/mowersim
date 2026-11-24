@@ -251,15 +251,150 @@ def fig_demo():
     save(fig, "demo.pdf")
 
 
-def main():
-    fig_lawns()
-    fig_raster()
-    fig_turning_circle()
-    fig_effective_width()
-    fig_next_pass()
-    fig_ties()
-    fig_rs_examples()
-    fig_demo()
+# ------------------------------------------------------------- chapter 6
+def _headland(name):
+    from mowersim.planning.common import Checker
+    from mowersim.planning.headland import link_rings, plan_headland
+    lawn = example_lawns()[name]
+    ck = Checker(lawn, M, 0.05)
+    h = plan_headland(lawn, M, passes=2, checker=ck)
+    return lawn, h, link_rings(h.rings, M, ck)
+
+
+def fig_offsets():
+    from shapely.geometry import Polygon as SPolygon  # noqa: F401
+    from mowersim.planning.common import lawn_polygon, polygons
+    lawn = example_lawns()["garden"]
+    fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.4))
+    for ax, c in zip(axes, (0.6, 1.8, 3.0)):
+        draw_lawn(ax, lawn, alpha=0.6)
+        for poly in polygons(lawn_polygon(lawn).buffer(-c, join_style="mitre",
+                                                        mitre_limit=10)):
+            for ring in [poly.exterior, *poly.interiors]:
+                xy = np.asarray(ring.coords)
+                ax.plot(xy[:, 0], xy[:, 1], color=C["forward"], lw=1.4)
+        ax.set_title(f"offset by c = {c} m")
+        ax.tick_params(labelsize=7)
+    save(fig, "offsets.pdf")
+
+
+def fig_swing():
+    from mowersim.kinematics import advance
+    fig, ax = plt.subplots(figsize=(4.6, 3.6))
+    R = M.min_radius
+    start = Pose(0, 0, 0)
+    pts = M.footprint_points(0.02)
+    t = Trajectory(start).then(0, 1.5).then(M.max_curvature, R * math.pi / 2)
+    smp = t.sample(0.02)
+    for x, y, th in zip(smp.x[::4], smp.y[::4], smp.theta[::4]):
+        w = np.c_[x + np.cos(th) * pts[:, 0] - np.sin(th) * pts[:, 1],
+                  y + np.sin(th) * pts[:, 0] + np.cos(th) * pts[:, 1]]
+        ax.plot(w[:, 0], w[:, 1], ",", color="#d84315", alpha=0.25)
+    ax.plot(smp.x, smp.y, color=C["forward"], lw=1.8, label="rear axle")
+    h = 0.515
+    ax.axvline(1.5 + R + h, color="black", ls="--", lw=1)
+    ax.text(1.5 + R + h + 0.05, 0.3, "half-width\nfrom the end\nof the turn",
+            fontsize=7, va="bottom")
+    # the farthest point reached to the right
+    xs = []
+    for x, y, th in zip(smp.x, smp.y, smp.theta):
+        xs.append((x + np.cos(th) * pts[:, 0] - np.sin(th) * pts[:, 1]).max())
+    ax.axvline(max(xs), color="#c62828", lw=1)
+    ax.annotate("", xy=(max(xs), 1.6), xytext=(1.5 + R + h, 1.6),
+                arrowprops=dict(arrowstyle="<->", color="#c62828"))
+    ax.text((max(xs) + 1.5 + R + h) / 2, 1.7, f"{max(xs) - (1.5 + R + h):.2f} m",
+            color="#c62828", ha="center", fontsize=8)
+    draw_mower(ax, M, advance(advance(start, 0, 1.5), M.max_curvature, R * 0.6),
+               curvature=M.max_curvature, alpha=0.9)
+    ax.set_aspect("equal")
+    ax.set_xlim(-0.8, 4.6)
+    ax.set_ylim(-0.8, 3.2)
+    ax.set_title("quarter turn at full lock: the front corner swings out")
+    ax.tick_params(labelsize=7)
+    save(fig, "swing.pdf")
+
+
+def fig_corner():
+    from mowersim.planning.common import Checker
+    from mowersim.planning.headland import corner_path, unit
+    lawn = example_lawns()["rectangle"]
+    ck = Checker(lawn, M, 0.05)
+    c1 = 0.615
+    V = np.array([20 - c1, c1])
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.4))
+    cases = ((0.0, M.min_radius, 2 * M.min_radius, "no shift: δ = 0, ρ = 1.43 m"),
+             None)
+    # the solution the planner finds
+    from mowersim.planning.headland import Vertex, solve_corner, solve_corner_shift
+    vx = Vertex(V, math.pi / 2)
+    rooms = ((20 - 2 * c1) / 2, (12 - 2 * c1) / 2)
+    how = "shift then turn"
+    if not solve_corner_shift(vx, 0.0, math.pi / 2, *rooms, M, ck):
+        solve_corner(vx, 0.0, math.pi / 2, *rooms, M, ck, False)
+        how = f"manoeuvre with reverse, b = {vx.t_in:.1f} m"
+    found = vx
+    for ax, case in zip(axes, (cases[0], "found")):
+        draw_lawn(ax, lawn)
+        if case == "found":
+            segs, b_in = found.move, found.t_in
+            title = f"planner's choice: {how}"
+        else:
+            delta, rho, rs, title = case
+            segs, b_in, _ = corner_path(V, 0.0, math.pi / 2, math.pi / 2, delta, rho, rs)
+        start = Pose(*(V - b_in * unit(0.0)), 0.0)
+        traj = Trajectory(start).extend(segs)
+        smp = traj.sample(0.02)
+        ok = ck.free_poses(smp.x, smp.y, smp.theta)
+        draw_trajectory(ax, Trajectory(start, [type(sg)(sg.curvature, sg.length, sg.reverse,
+                                                        True) for sg in segs]), lw=1.6)
+        if (~ok).any():
+            ax.plot(smp.x[~ok], smp.y[~ok], ".", color="#c62828", ms=2)
+        for f in (0.0, 0.35, 0.7, 1.0):
+            i = min(int(f * (len(smp.x) - 1)), len(smp.x) - 1)
+            draw_mower(ax, M, Pose(smp.x[i], smp.y[i], smp.theta[i]), smp.curvature[i],
+                       alpha=0.55, blades=False, ref_point=False)
+        ax.plot([V[0] - 9, V[0]], [V[1], V[1]], ":", color="black", lw=1)
+        ax.plot([V[0], V[0]], [V[1], V[1] + 9], ":", color="black", lw=1)
+        ax.set_xlim(11.5, 20.3)
+        ax.set_ylim(-0.3, 8.2)
+        ax.set_title(title + ("\ncollision (red)" if (~ok).any() else
+                              "\nthe mower stays on the lawn"))
+        ax.tick_params(labelsize=7)
+    save(fig, "corner.pdf")
+
+
+def fig_headlands():
+    fig, axes = plt.subplots(3, 2, figsize=(7.2, 8.6),
+                             gridspec_kw={"height_ratios": [12, 20, 20]})
+    for row, name in enumerate(("rectangle", "l_shape", "garden")):
+        lawn, h, traj = _headland(name)
+        res = evaluate(lawn, M, traj)
+        d = res.as_dict()
+        draw_lawn(axes[row, 0], lawn)
+        draw_trajectory(axes[row, 0], traj, lw=1)
+        draw_coverage(axes[row, 1], res, lawn)
+        axes[row, 0].set_title(f"{name}: two headland passes, c₁ = {h.first_offset:.2f} m")
+        axes[row, 1].set_title(f"cut {d['coverage_%']}%, {d['collisions']} collisions, "
+                               f"{d['time_min']} min")
+        for ax in axes[row]:
+            ax.tick_params(labelsize=7)
+    fig.tight_layout(h_pad=1.5)
+    save(fig, "headlands.pdf")
+
+
+FIGURES = {
+    "ch2-5": [fig_lawns, fig_raster, fig_turning_circle, fig_effective_width, fig_next_pass,
+              fig_ties, fig_rs_examples, fig_demo],
+    "ch6": [fig_offsets, fig_swing, fig_corner, fig_headlands],
+}
+
+
+def main(argv=None):
+    """``python tools/course_figures.py [chapters...]``, e.g. ``ch6``; all by default."""
+    names = (argv if argv is not None else sys.argv[1:]) or list(FIGURES)
+    for name in names:
+        for f in FIGURES[name]:
+            f()
 
 
 if __name__ == "__main__":

@@ -192,7 +192,7 @@ every pass once, and its cost is the sum of the times of its turns.
 This is the problem of the shortest path through all the points of a
 travelling salesman, on points that lie on a line but with an unusual
 distance ($T$ is not increasing with the jump). It was posed for field
-operations by Bochtis and Vougioukas~\cite{bochtis2008}. For a few dozen passes a
+operations by Bochtis and Vougioukas~\cite{bochtis2008minimising}. For a few dozen passes a
 local search finds very good orders. The code starts from the lateral order
 and from interleaved blocks ($i, i + k, i + 1, i + k + 1, \dots$ for $k = 2,
 \dots, 7$), and improves each of them while one of two moves lowers the
@@ -270,7 +270,7 @@ narrowest is therefore a good choice.
 \end{proof}
 
 The same argument underlies the rotating calipers, which compute the width
-of a set in linear time~\cite{houle1988}.
+of a set in linear time~\cite{houle1988computing}.
 
 The planner estimates the time for the directions of the edges of the
 convex hull, and for every multiple of $15°$ (the ceiling in the number of

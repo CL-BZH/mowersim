@@ -9,3 +9,5 @@ course/*.toc
 course/*.fls
 course/*.fdb_latexmk
 course/chapters/*.aux
+course/*.bbl
+course/*.blg

@@ -45,7 +45,7 @@ This is a \emph{generalised} travelling salesman problem: every cell is a
 group of $k$ ``cities'' (its ways), and the tour must visit one city per
 group. With a handful of cells, it can be solved exactly by dynamic
 programming over the subsets of cells, the method of Held and
-Karp~\cite{heldkarp1962}.
+Karp~\cite{held1962dynamic}.
 
 \begin{proposition}{Dynamic programming over subsets}{heldkarp}
   Let $D(S, i, a)$ be the least cost of an order that mows exactly the
@@ -111,7 +111,7 @@ where no direct path exists.
 
 The planner has used a search for paths around obstacles since
 Chapter~\ref{ch:headlands}: \emph{Hybrid A*}, introduced by Dolgov, Thrun,
-Montemerlo and Diebel~\cite{dolgov2010} for autonomous cars in car parks.
+Montemerlo and Diebel~\cite{dolgov2010path} for autonomous cars in car parks.
 It is the A* search on a graph whose nodes are poses reached by driving,
 with two twists.
 

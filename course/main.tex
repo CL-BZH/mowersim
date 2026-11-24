@@ -25,6 +25,12 @@
 \include{chapters/12-search}
 \appendix
 \include{chapters/appendix}
-\include{chapters/references}
+\cleardoublepage
+\renewcommand{\bibname}{References}
+\phantomsection
+\addcontentsline{toc}{chapter}{References}
+\nocite{*}
+\bibliographystyle{plain}
+\bibliography{references}
 
 \end{document}

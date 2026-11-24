@@ -218,7 +218,11 @@ So to find the words of a given type reaching $(x, y, \varphi)$, it is enough
 to have one formula, and to apply it to the four goals $(x, y, \varphi)$,
 $(-x, y, -\varphi)$, $(x, -y, -\varphi)$ and $(-x, -y, \varphi)$, then flip,
 reflect, or both, the solutions found. Twelve base formulas, applied four
-times each, give the 48 words.
+times each, give the 48 words. Reeds and Shepp count up to 68 formulas,
+because the equations of the words of five families ($C|C|C$, $C|CC$,
+$CC|C$, $CC_u|C_uC$ and $C|C_{\pi/2}SC_{\pi/2}|C$) have two roots; they
+observed that one formula per word always sufficed, without proving it, and
+the code uses one.
 
 \paragraph{How the code makes sure every word is right.}
 The closed formulas are easy to get subtly wrong. The code therefore never

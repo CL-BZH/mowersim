@@ -1,0 +1,80 @@
+\chapter{Notation and code}
+\label{ch:appendix}
+
+\section{Notation}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  symbol & meaning & where \\
+  \midrule
+  $\Omega$, $A$ & the lawn and its area & Chapter~\ref{ch:lawn} \\
+  $h$ & side of a raster cell & Section~\ref{sec:raster} \\
+  $P$ & middle of the rear axle, the reference point & Chapter~\ref{ch:mower}
+    \\
+  $q = (x, y, \theta)$ & pose: position of $P$ and heading &
+    Definition~\ref{def:pose} \\
+  $u$, $n$ & unit vectors forward and to the left & Chapter~\ref{ch:mower} \\
+  $L$, $T$ & wheelbase, track & Figure~\ref{fig:mower} \\
+  $\delta$, $\delta_{\max}$ & steering angle, its maximum &
+    Theorem~\ref{thm:bicycle} \\
+  $\kappa = \tan\delta / L$ & curvature of the path of $P$ &
+    Theorem~\ref{thm:bicycle} \\
+  $\kmax$, $\Rmin = 1/\kmax$ & largest curvature, minimum turning radius &
+    Example~\ref{ex:fulllock} \\
+  $C$ & instantaneous centre of rotation & Proposition~\ref{prop:icr} \\
+  $d$, $r$, $w$ & deck offset, blade radius, cutting width &
+    Figure~\ref{fig:mower} \\
+  $\rho_{\mathrm{in}}$, $\rho_{\mathrm{out}}$ & radii of the annulus swept in
+    a turn & Proposition~\ref{prop:blades} \\
+  $\weff(\kappa)$ & area swept per metre driven & Proposition~\ref{prop:weff}
+    \\
+  $L$, $R$, $S$ (letters) & left arc, right arc, straight line &
+    Chapter~\ref{ch:paths} \\
+  $\ell_{\mathrm{mow}}$ & distance driven with the blades engaged &
+    Theorem~\ref{thm:lowerbound} \\
+  $\eta$ & efficiency & Definition~\ref{def:efficiency} \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\section{Running the code}
+
+The package needs Python 3.10 or later, NumPy and Matplotlib (and Pillow for
+animations). From the root of the repository:
+
+\begin{verbatim}
+pip install -e ".[gif,test]"
+python -m mowersim mower                      # the mower, top view
+python -m mowersim show lawns/garden.json     # a lawn and the mower
+python -m mowersim path 0 0.92 180 --compare  # Dubins vs Reeds-Shepp
+python -m mowersim demo lawns/rectangle.json --png demo.png
+python -m pytest                              # the tests
+python tools/course_figures.py                # redraw the figures
+\end{verbatim}
+
+The dimensions and speeds of the mower are in \code{mower.json}; any command
+accepts \code{-{}-mower my\_mower.json}. To use another machine, measure:
+
+\begin{description}
+  \item[The minimum turning radius.]
+    \leavevmode\\
+    Drive a full circle at full lock and measure the diameter of the circle
+    traced by the middle of the rear axle; half of it is $\Rmin$. In the file,
+    set \code{max\_steer\_deg} so that $L/\tan\delta_{\max} = \Rmin$.
+  \item[The deck.]
+    \leavevmode\\
+    The distance $d$ from the rear axle to the centre of the deck, the
+    cutting width, and the number and position of the blades.
+  \item[The speeds.]
+    \leavevmode\\
+    Forward on straight lines and in turns, in reverse, and the time to stop,
+    change gear and start again.
+\end{description}
+
+\section{Building this document}
+
+\begin{verbatim}
+cd course
+latexmk -pdf main.tex
+\end{verbatim}

@@ -1,0 +1,53 @@
+% Preamble of the course "Mowing a real lawn with a car-like robot"
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\DeclareUnicodeCharacter{00B0}{\ensuremath{^\circ}}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{siunitx}
+\sisetup{group-separator={\,}, detect-all}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{calc,arrows.meta,angles,quotes,decorations.pathreplacing,
+  positioning}
+\usepackage[most]{tcolorbox}
+\usepackage[colorlinks,linkcolor=blue!50!black,citecolor=blue!50!black,
+  urlcolor=blue!50!black]{hyperref}
+
+\setlist{nosep,leftmargin=*}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+
+% ---------------------------------------------------------------- boxes
+% blue: definitions, red: theorems, amber: propositions, teal: "In words",
+% grey: examples and remarks
+\newtcbtheorem[number within=chapter]{definition}{Definition}{
+  enhanced, breakable, colback=blue!4, colframe=blue!55!black,
+  fonttitle=\bfseries, separator sign={.}}{def}
+\newtcbtheorem[use counter from=definition]{theorem}{Theorem}{
+  enhanced, breakable, colback=red!4, colframe=red!60!black,
+  fonttitle=\bfseries, separator sign={.}}{thm}
+\newtcbtheorem[use counter from=definition]{proposition}{Proposition}{
+  enhanced, breakable, colback=orange!6, colframe=orange!75!black,
+  fonttitle=\bfseries, separator sign={.}}{prop}
+\newtcbtheorem[use counter from=definition]{example}{Example}{
+  enhanced, breakable, colback=black!3, colframe=black!45,
+  fonttitle=\bfseries, separator sign={.}}{ex}
+\newtcolorbox{inwords}{enhanced, breakable, colback=teal!5,
+  colframe=teal!60!black, fonttitle=\bfseries, title={In words}}
+\newtcolorbox{incode}{enhanced, breakable, colback=black!2,
+  colframe=black!30, fonttitle=\bfseries, title={In the code}}
+
+\newenvironment{proof}{\par\textit{Proof.}\ }{\hfill$\square$\par}
+
+% ------------------------------------------------------------- notation
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\kmax}{\kappa_{\max}}
+\newcommand{\Rmin}{R_{\min}}
+\newcommand{\weff}{w_{\mathrm{eff}}}
+\newcommand{\code}[1]{\texttt{#1}}
+\DeclareMathOperator{\atantwo}{atan2}

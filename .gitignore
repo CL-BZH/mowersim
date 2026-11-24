@@ -1,0 +1,11 @@
+__pycache__/
+*.egg-info/
+.pytest_cache/
+*.gif
+course/*.aux
+course/*.log
+course/*.out
+course/*.toc
+course/*.fls
+course/*.fdb_latexmk
+course/chapters/*.aux

@@ -1,0 +1,96 @@
+\chapter{Introduction}
+\label{ch:intro}
+
+\section{The question}
+
+A ride-on mower converted into a robot has to mow a whole lawn on its own.
+Which path should it follow? A good path cuts every square metre of grass,
+wastes little time driving over grass already cut, never leaves the lawn or
+hits a flower bed, and is one the machine can actually drive.
+
+The last condition is where the difficulty lies. A ride-on mower steers like
+a car: it cannot turn on the spot, its tightest turn has a radius of more than
+a metre, and to go back along the next strip it must either make a wide loop
+or a manoeuvre with a reverse leg. Most simple models of coverage ignore this:
+they cut the lawn into square cells and let the mower jump from a cell to its
+neighbour, turning by 90 degrees whenever it likes. Such a model is a fine
+proof of concept for comparing algorithms, but the paths it produces cannot be
+driven by a car-like machine.
+
+This course builds the realistic version step by step.
+
+\section{From a grid to a real lawn}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+  \toprule
+  & grid model & this course \\
+  \midrule
+  lawn & square cells & polygon in metres, with holes \\
+  mower & a cell and one of 8 headings & pose $(x, y, \theta)$, real
+    dimensions \\
+  motion & jump to a neighbouring cell & arcs of curvature
+    $|\kappa| \le \kmax$, forward or reverse \\
+  mowed area & the cells visited & the area swept by the blades \\
+  cost & number of moves and turns & time, missed area, area cut twice \\
+  lower bound & $N - 1$ moves & area divided by an effective width \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\section{What this course covers}
+
+This first edition lays the foundations: what a lawn is, how the mower moves,
+how to join two poses by the shortest drivable path, and how to measure a
+path. Each chapter derives its results completely, then shows where they are
+in the code.
+
+\begin{description}
+  \item[Chapter~\ref{ch:lawn}, the lawn.]
+    \leavevmode\\
+    Polygons with holes, their area, the point-in-polygon test, and the
+    raster on which coverage is measured, with a bound on its error.
+  \item[Chapter~\ref{ch:mower}, the mower.]
+    \leavevmode\\
+    The machine seen from above, the kinematic bicycle model derived from
+    rolling without slipping, Ackermann steering, the exact motion along an
+    arc, and the area the blades sweep in a turn.
+  \item[Chapter~\ref{ch:paths}, shortest paths.]
+    \leavevmode\\
+    Dubins paths (forward only) and Reeds--Shepp paths (with reverse), and the
+    case every mowing pattern meets: turning into the next strip.
+  \item[Chapter~\ref{ch:measuring}, measuring a path.]
+    \leavevmode\\
+    Coverage, collisions, time, and a lower bound on the length of any path
+    that mows the whole lawn. A first experiment shows why the border of the
+    lawn needs special treatment.
+\end{description}
+
+The following editions will build planners on these foundations: headland
+passes around the border, parallel swaths joined by feasible turns, the
+decomposition of complex lawns into simpler regions and the order in which to
+mow them, and finally learning and search to make the high-level choices.
+
+\section{The code}
+
+Everything in this course is implemented in the Python package
+\code{mowersim}, in the same repository. The figures that show trajectories
+and coverage maps are drawn by the code (\code{tools/course\_figures.py}), so
+they show what the code computes. A single function, \code{evaluate}, measures
+every trajectory, whatever produced it: two methods can then only differ by
+their paths, never by the way they are scored.
+
+\section{Conventions}
+
+\begin{itemize}
+  \item Lengths are in metres, times in seconds, angles in radians in the
+    formulas (degrees only when quoting a value).
+  \item The \emph{pose} of the mower is the position of the middle of its rear
+    axle and its heading (Chapter~\ref{ch:mower} explains this choice).
+  \item Angles are counter-clockwise, and a positive curvature turns to the
+    left.
+  \item The numerical examples use the default mower of the code: a
+    tractor-style ride-on mower with a cutting width of
+    \SI{0.97}{\metre} and a minimum turning radius of \SI{1.43}{\metre}. All
+    its dimensions are parameters (Appendix~\ref{ch:appendix}).
+\end{itemize}

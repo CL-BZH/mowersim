@@ -1,0 +1,21 @@
+{
+ "wheelbase": 1.2,
+ "track": 0.8,
+ "max_steer_deg": 40.0,
+ "rear_overhang": 0.45,
+ "front_overhang": 0.35,
+ "body_width": 0.95,
+ "wheel_diameter": 0.4,
+ "wheel_width": 0.15,
+ "deck_offset": 0.55,
+ "blade_radius": 0.25,
+ "blade_lateral": [
+  0.235,
+  -0.235
+ ],
+ "deck_margin": 0.03,
+ "v_mow": 1.2,
+ "v_turn": 0.7,
+ "v_reverse": 0.6,
+ "t_shift": 2.0
+}

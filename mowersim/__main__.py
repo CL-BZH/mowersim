@@ -5,6 +5,7 @@
     python -m mowersim path 3 2 180                          # shortest path to (3 m, 2 m, 180 deg)
     python -m mowersim demo lawns/rectangle.json --png out.png --gif out.gif
     python -m mowersim evaluate lawns/rectangle.json traj.json
+    python -m mowersim plan lawns/rectangle.json --pattern skip --png plan.png
 
 Every command accepts ``--mower config.json`` to use your own dimensions.
 """
@@ -114,6 +115,25 @@ def cmd_evaluate(a):
         _save_or_show(plot_result(lawn, m, traj, res), a.png)
 
 
+def cmd_plan(a):
+    from .planning.swaths import plan_simple
+    from .viz import animate, plot_result
+    lawn, m = Lawn.from_file(a.lawn), _mower(a)
+    theta = None if a.theta is None else math.radians(a.theta)
+    traj, info = plan_simple(lawn, m, pattern=a.pattern, theta=theta)
+    res = evaluate(lawn, m, traj, res=a.res)
+    print(f"direction {math.degrees(info['theta']):.1f} deg, {info['headland_passes']} "
+          f"headland passes, {info['passes']} passes")
+    print(json.dumps(res.as_dict(), indent=1))
+    if a.save:
+        traj.save(a.save)
+    if a.png:
+        _save_or_show(plot_result(lawn, m, traj, res), a.png)
+    if a.gif:
+        animate(lawn, m, traj, a.gif)
+        print("wrote", a.gif)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m mowersim")
     ap.add_argument("--mower", help="JSON file with the mower's dimensions and speeds")
@@ -147,6 +167,16 @@ def main(argv=None):
     s.add_argument("--res", type=float, default=0.05)
     s.add_argument("--png")
     s.set_defaults(func=cmd_evaluate)
+    s = sub.add_parser("plan", help="plan a path: headland, then parallel passes")
+    s.add_argument("lawn")
+    s.add_argument("--pattern", choices=("adjacent", "skip"), default="adjacent",
+                   help="order of the passes (course, chapter 7)")
+    s.add_argument("--theta", type=float, help="direction of the passes in degrees")
+    s.add_argument("--res", type=float, default=0.05)
+    s.add_argument("--save", help="save the trajectory (JSON)")
+    s.add_argument("--png")
+    s.add_argument("--gif")
+    s.set_defaults(func=cmd_plan)
     a = ap.parse_args(argv)
     if getattr(a, "png", None):
         matplotlib.use("Agg")

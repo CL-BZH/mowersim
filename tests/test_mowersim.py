@@ -258,3 +258,49 @@ def test_hybrid_astar_goes_around_an_obstacle():
     assert segs is not None and ck.free(a, segs)     # ...but this one avoids the wall
     end = Trajectory(a, segs).end
     assert math.hypot(end.x - b.x, end.y - b.y) < 1e-5
+
+
+# ------------------------------------------------------------ swaths, turns
+def test_swath_count_and_spacing():
+    from shapely.geometry import box
+    from mowersim.planning.swaths import swaths
+    region = box(2, 2, 18, 10)                       # W = 8 across theta = 0
+    sw = swaths(region, 0.0, M, overlap=0.05)
+    s, w, o = M.cutting_width - 0.05, M.cutting_width, 0.05
+    assert len(sw) == 1 + math.ceil((8 - w + 2 * o) / s)
+    q = [x.q for x in sw]
+    assert q[0] == pytest.approx(2 + w / 2 - o) and q[-1] == pytest.approx(10 - w / 2 + o)
+    assert np.diff(q).max() == pytest.approx(s)
+    assert sw[0].a[0] == pytest.approx(2 + M.blade_radius)   # stops r before the edge
+
+
+def test_forward_turn_matches_the_lsl_formula():
+    from mowersim.planning.swaths import min_forward_jump, turn_time
+    R, d = M.min_radius, M.deck_offset
+    jump = 3.68
+    straight = math.hypot(2 * d, jump - 2 * R)
+    assert turn_time(M, jump) == pytest.approx(math.pi * R / M.v_turn + straight / M.v_mow,
+                                               abs=1e-6)
+    assert min_forward_jump(M, 0.92) == 3
+
+
+def test_pass_order_is_a_permutation_and_saves_time():
+    from mowersim.planning.swaths import order_cost, pass_order, turn_time
+    n, s = 12, 0.92
+    order = pass_order(n, "skip", M, s)
+    assert sorted(order) == list(range(n))
+    cost = {j: turn_time(M, j * s) for j in range(1, n)}
+    assert order_cost(order, cost) < 0.8 * order_cost(list(range(n)), cost)
+
+
+def test_passes_on_a_rectangular_region():
+    from shapely.geometry import box
+    from mowersim.planning.common import Checker
+    from mowersim.planning.swaths import plan_passes
+    lawn = example_lawns()["rectangle"]
+    ck = Checker(lawn, M, 0.05)
+    region = box(3.5, 3, 16.5, 9)
+    for pattern in ("adjacent", "skip"):
+        pp = plan_passes(region, 0.0, M, ck, Pose(10, 1.5, math.pi), pattern)
+        assert pp.turn_failures == 0 and sorted(pp.order) == list(range(pp.passes))
+        assert ck.free(Pose(10, 1.5, math.pi), pp.trajectory.segments)

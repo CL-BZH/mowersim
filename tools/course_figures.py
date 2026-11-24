@@ -382,10 +382,140 @@ def fig_headlands():
     save(fig, "headlands.pdf")
 
 
+# ----------------------------------------------------------------- chapter 7
+
+_PLANS = {}
+
+
+def _plan(name, pattern):
+    from mowersim.planning.swaths import plan_simple
+    if (name, pattern) not in _PLANS:
+        lawn = example_lawns()[name]
+        traj, info = plan_simple(lawn, M, pattern=pattern)
+        _PLANS[name, pattern] = (lawn, traj, info, evaluate(lawn, M, traj))
+    return _PLANS[name, pattern]
+
+
+def _outline_reach(segs, start):
+    from mowersim.planning.common import footprint_samples
+    smp = Trajectory(start).extend(segs).sample(0.02)
+    pts = footprint_samples(M, 0.05)
+    return max(float((x + math.cos(t) * pts[:, 0] - math.sin(t) * pts[:, 1]).max())
+               for x, t in zip(smp.x, smp.theta))
+
+
+def fig_shift():
+    """End of a pass and start of the next: the rear axle moves out by 2d."""
+    from mowersim.paths import fastest
+    d, s = M.deck_offset, M.cutting_width - 0.05
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.4),
+                             gridspec_kw={"width_ratios": [1, 1]})
+    for ax, jump, title in ((axes[0], 1, "next pass: three-point turn"),
+                            (axes[1], 4, "four passes over: forward turn")):
+        a, b = Pose(-d, 0.0, 0.0), Pose(d, jump * s, math.pi)
+        segs = fastest(a, b, M)
+        t = path_time(segs, M.v_mow, M.v_turn, M.v_reverse, M.t_shift)
+        for q in (0.0, jump * s):
+            ax.plot([-4.5, 0], [q, q], color="#1565c0", lw=1.0, ls=":")
+            ax.add_patch(plt.Rectangle((-4.5, q - M.cutting_width / 2), 4.5, M.cutting_width,
+                                       color="#a5d6a7", alpha=0.5, lw=0, zorder=0))
+        ax.axvline(0, color="#2e7d32", lw=1.2)
+        reach = _outline_reach(segs, a)
+        ax.axvline(reach, color="#c62828", lw=1.0, ls="--")
+        ax.annotate("", xy=(reach, -1.05), xytext=(a.x, -1.05),
+                    arrowprops=dict(arrowstyle="<->", color="#c62828", lw=0.9))
+        label = rf"$a_{{\mathrm{{turn}}}}$ = {reach - a.x:.2f} m"
+        ax.text((a.x + reach) / 2, -1.25, label, color="#c62828", ha="center", va="top",
+                fontsize=7)
+        _draw_path(ax, segs, a, b, f"{title}\n{t:.2f} s", mowers=False)
+        draw_mower(ax, M, a, alpha=0.3, ref_point=False, zorder=3)
+        draw_mower(ax, M, b, alpha=0.3, ref_point=False, zorder=3)
+        ax.annotate("", xy=(b.x, jump * s + 0.75), xytext=(a.x, jump * s + 0.75),
+                    arrowprops=dict(arrowstyle="<->", color="k", lw=0.8))
+        ax.text(0, jump * s + 0.85, "$2d$", ha="center", va="bottom", fontsize=8)
+        top = jump * s + 1.5
+        ax.set_xlim(-4.5, reach + 0.6)
+        ax.set_ylim(-1.6, top)
+    fig.tight_layout()
+    save(fig, "shift.pdf")
+
+
+def fig_turn_times():
+    from mowersim.planning.swaths import turn_ahead, turn_time
+    s = M.cutting_width - 0.05
+    j = np.arange(1, 11)
+    rs = [turn_time(M, k * s) for k in j]
+    db = [turn_time(M, k * s, reverse=False) for k in j]
+    ah = [turn_ahead(M, k * s) for k in j]
+    ahd = [turn_ahead(M, k * s, reverse=False) for k in j]
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.8))
+    axes[0].plot(j, db, "o-", color="#ef6c00", ms=3.5, label="forward only (Dubins)")
+    axes[0].plot(j, rs, "s-", color="#1565c0", ms=3.5, label="with reverse (Reeds–Shepp)")
+    axes[0].set_ylabel("time of the turn (s)")
+    axes[1].plot(j, ahd, "o-", color="#ef6c00", ms=3.5, label="forward only (Dubins)")
+    axes[1].plot(j, ah, "s-", color="#1565c0", ms=3.5, label="with reverse (Reeds–Shepp)")
+    axes[1].set_ylabel(r"$a_{\mathrm{turn}}$: reach beyond the axle (m)")
+    for ax in axes:
+        ax.set_xlabel("jump (passes of s = 0.92 m)")
+        ax.set_xticks(j)
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=7)
+    fig.tight_layout()
+    save(fig, "turn_times.pdf")
+
+
+def fig_direction():
+    from mowersim.planning.swaths import estimate_time, turn_time
+    s = M.cutting_width - 0.05
+    turn = turn_time(M, s)
+    fig, ax = plt.subplots(figsize=(7.2, 2.6))
+    th = np.radians(np.arange(0, 180.1, 2.5))
+    for name, color in (("rectangle", "#1565c0"), ("l_shape", "#ef6c00")):
+        lawn, h, _ = _headland(name)
+        tt = [estimate_time(h.interior, x, M, 0.05, turn) / 60 for x in th]
+        ax.plot(np.degrees(th), tt, color=color, label=f"{name} (interior)")
+        k = int(np.argmin(tt))
+        ax.plot(np.degrees(th[k]), tt[k], "o", color=color, ms=4)
+    ax.set_xlabel("direction of the passes θ (degrees)")
+    ax.set_ylabel("estimated time (min)")
+    ax.set_xticks(range(0, 181, 15))
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=7)
+    fig.tight_layout()
+    save(fig, "direction.pdf")
+
+
+def fig_patterns():
+    rows = (("rectangle", "adjacent"), ("rectangle", "skip"), ("l_shape", "adjacent"))
+    fig, axes = plt.subplots(3, 2, figsize=(7.2, 9.0),
+                             gridspec_kw={"height_ratios": [12, 12, 20]})
+    for row, (name, pattern) in enumerate(rows):
+        lawn, traj, info, res = _plan(name, pattern)
+        d = res.as_dict()
+        pp = info["passes_plan"]
+        draw_lawn(axes[row, 0], lawn)
+        draw_trajectory(axes[row, 0], traj, lw=0.9)
+        for rank, j in enumerate(pp.order):
+            m = (pp.swaths[j].a + pp.swaths[j].b) / 2
+            axes[row, 0].text(m[0] + (rank % 2) * 1.2, m[1], str(rank + 1), fontsize=6,
+                              ha="center", va="center", zorder=9,
+                              bbox=dict(boxstyle="round,pad=0.12", fc="white", ec="none"))
+        draw_coverage(axes[row, 1], res, lawn)
+        axes[row, 0].set_title(f"{name}, {pattern}: {info['headland_passes']} headland "
+                               f"+ {info['passes']} passes")
+        axes[row, 1].set_title(f"cut {d['coverage_%']}%, {d['direction_changes']} changes "
+                               f"of direction, {d['time_min']} min")
+        for ax in axes[row]:
+            ax.tick_params(labelsize=7)
+    fig.tight_layout(h_pad=1.5)
+    save(fig, "patterns.pdf")
+
+
 FIGURES = {
     "ch2-5": [fig_lawns, fig_raster, fig_turning_circle, fig_effective_width, fig_next_pass,
               fig_ties, fig_rs_examples, fig_demo],
     "ch6": [fig_offsets, fig_swing, fig_corner, fig_headlands],
+    "ch7": [fig_shift, fig_turn_times, fig_direction, fig_patterns],
 }
 
 
